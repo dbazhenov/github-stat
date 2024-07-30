@@ -1,0 +1,42 @@
+version: "3"
+services:
+
+  mongodb:
+    image: "percona/percona-server-mongodb:7.0-arm64"
+    volumes:
+      - mongodata:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: github
+    ports: 
+      - "27017:27017"
+
+  postgres:
+    image: percona/percona-distribution-postgresql:16.2-multi
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      LANG: en_US.utf8
+      PGDATA: /data/db
+    volumes:
+      - pgdata:/data/db
+      - ./data/init/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports: 
+      - "5432:5432"
+
+  mysql:
+    image: "percona/percona-server:8.3.0-1.1-multi"
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ./data/init/mysql:/docker-entrypoint-initdb.d
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: github
+    ports:
+      - "3306:3306"
+
+volumes:
+  pgdata:
+  mongodata:
+  mysqldata:
