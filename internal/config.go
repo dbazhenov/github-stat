@@ -1,7 +1,9 @@
 package internal
 
 import (
+	"log"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -11,6 +13,12 @@ type EnvVars struct {
 	MongoDB  ConfigMongoDB
 	GitHub   ConfigGitHub
 	Postgres ConfigPostgres
+	App      ConfigApp
+}
+
+type ConfigApp struct {
+	DelayMinutes int
+	Debug        bool
 }
 
 type ConfigGitHub struct {
@@ -53,6 +61,9 @@ func GetEnvVars() (EnvVars, error) {
 
 	envVars.GitHub.Organisation = os.Getenv("GITHUB_ORG")
 	envVars.GitHub.Token = os.Getenv("GITHUB_TOKEN")
+	if envVars.GitHub.Token == "" {
+		log.Println("Configuration: GitHub Token is not set. The script will run in limited mode, only repositories will be fetched. Add Github Token to receive Pull Requests data.")
+	}
 
 	envVars.MongoDB.User = os.Getenv("MONGODB_USER")
 	envVars.MongoDB.Password = os.Getenv("MONGODB_PASSWORD")
@@ -71,6 +82,21 @@ func GetEnvVars() (EnvVars, error) {
 	envVars.MySQL.DB = os.Getenv("MYSQL_DB")
 	envVars.MySQL.Host = os.Getenv("MYSQL_HOST")
 	envVars.MySQL.Port = os.Getenv("MYSQL_PORT")
+
+	debugStr := os.Getenv("DEBUG")
+	debug, err := strconv.ParseBool(debugStr)
+	if err != nil {
+		log.Fatalf("Error converting DEBUG to bool: %v", err)
+	}
+
+	envVars.App.Debug = debug
+
+	delayString := os.Getenv("DELAY_MINUTES")
+	delayInt, err := strconv.Atoi(delayString)
+	if err != nil {
+		log.Fatalf("Error converting DELAY_MINUTES to int: %v", err)
+	}
+	envVars.App.DelayMinutes = delayInt
 
 	return envVars, nil
 }

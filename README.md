@@ -1,14 +1,32 @@
-# Project for testing database connections
-
-This Golang application performs the following functions:
-1. Gets data from GitHub API. Gets the list of the organization's repositories specified in the settings.
-2. Stores data in JSON format in MySQL, MongoDB, and PostgreSQL.
-
-The script allows you to write JSON documents to three databases in parallel. Documents of the same type and the script algorithm is the same for each database, as a result you can compare speed, data volume and convenience of working with each database. 
+# Golang application to demonstrate work with MySQL, PostgreSQL, MongoDB databases.
 
 This is a great opportunity to learn about Go and how it works with MySQL, PostgreSQL, MongoDB databases in JSON format.
 
+The script allows you to write JSON documents to three databases in parallel. Documents of the same type and the script algorithm is the same for each database, as a result you can compare speed, data volume and convenience of working with each database. 
+
 The application requires Docker and Go on your machine.
+
+The application performs the following functions:
+1. Receives data from GitHub API. The list of repositories and Pull Requests for the selected organization will be retrieved. 
+2. Asynchronously writes data to three databases Postgres, MySQL, MongoDB. The algorithm and the write data itself is the same for all the databases, thus we can compare the queries, their query performance and execution speed.
+3. Simulation of database load in different scenarios (in development). Dataset in databases will be used for different types of queries and parameters.
+4. Dashboards with analytical reports on the dataset (in development). A web server and web pages with information about Pull Requests and Repositories will be launched. Such as numbers (PRs, comments, stars, contributors, forks), statuses, average response and close times. In this way we can assess the health of the open source organization on GitHub.
+
+The default configuration uses:
+1. Docker containers with Percona Server for MySQL, Percona Distribution for PostgreSQL and Percona Server for MySQL. 
+2. GitHub organization Percona, as it has about 200 public repositories and more than 40k Pull Requests.
+You can use any other configuration or databases. 
+
+Algorithm of the data fetching and storing application:
+1. The database connection configuration is set in environment variables or .env file. See .env.example
+2.The databases for the test can be run using Docker, docker-compose.yaml file is located in the main directory.
+3. The script reads the configuration.
+4. Runs an infinite loop that runs the main process of fetching and writing data. 
+5. Runs http requests to the Github API to get JSON documents with repository information and Pull Requests. On the first run, all Pull Requests are retrieved. On subsequent runs, the application checks for the latest updates in the databases and retrieves only new Pull Requests from the API.
+6. Runs asynchronously write to three databases using the same algorithm for the same data. 
+7. Reports are written to separate tables and collections for each run and each database.
+8. A log of the operations performed is output to the terminal. 
+9. The script is repeated in a loop with a period set in the configuration.
 
 ## Quick start
 
@@ -20,31 +38,15 @@ The application requires Docker and Go on your machine.
 
 `docker compose up -d`
 
-3. Run the script
+3. Copy or rename `.env.example` to `.env`
+
+4. Run the script
 
 `go run cmd/main/main.go`
 
 You will see in the terminal the process of writing identical JSON documents to databases in parallel.
 
-Also, the results of each run will be written to a table or collection of 'reports' in each database.
-
-```
-2024/07/31 18:16:34 PostgreSQL: Insert data, row: 67, repo: percona/mongo-rocks
-2024/07/31 18:16:34 MySQL: Insert data, row: 137, repo: percona/portal-doc
-2024/07/31 18:16:34 Finish MongoDB: {"type":"GitHub Repositories","started_at":"2024-07-31T18:16:33+04:00","finished_at":"2024-07-31T18:16:34+04:00","count":193,"api_requests":19}
-2024/07/31 18:16:34 MySQL: Insert data, row: 138, repo: percona/orchestrator
-2024/07/31 18:16:34 PostgreSQL: Insert data, row: 68, repo: percona/qan-api
-....
-2024/07/31 18:16:34 PostgreSQL: Insert data, row: 116, repo: percona/proxysql-admin-tool-doc
-2024/07/31 18:16:34 Finish MySQL: {"type":"GitHub Repositories","started_at":"2024-07-31T18:16:33+04:00","finished_at":"2024-07-31T18:16:34+04:00","count":193,"api_requests":19}
-2024/07/31 18:16:34 PostgreSQL: Insert data, row: 117, repo: percona/grafana
-2024/07/31 18:16:34 PostgreSQL: Insert data, row: 118, repo: percona/pdmysql-docs
-....
-2024/07/31 18:16:34 PostgreSQL: Insert data, row: 192, repo: percona/valkey-packaging
-2024/07/31 18:16:34 PostgreSQL: Finish Insert
-2024/07/31 18:16:34 Finish PostgreSQL: {"type":"GitHub Repositories","started_at":"2024-07-31T18:16:33+04:00","finished_at":"2024-07-31T18:16:34+04:00","count":193,"api_requests":19}
-```
-
+Also, the results of each run will be written to a table or collection of 'reports_*' in each database.
 
 ## Installation and launch.
 
@@ -58,6 +60,8 @@ This starts three databases:
 - MySQL. Percona Server for MySQL 8
 - PostgreSQL. Percona Distribution for PostgreSQL 16.2
 - MongoDB. Percona Server for MongoDB 7
+
+For Postgres and MySQL, data schemas will be created based on the data/init/* files
 
 3. (Optional) Connect to databases using GUI
 - MySQL Workbench for MySQL
@@ -80,24 +84,26 @@ Set the parameters in the .env file
 
 The main script will run parallel writes to the three databases.
 
-You can also write to each database individually by running the scripts:
-
-- MySQL: `go run cmd/mysql/main.go`
-
-- PostgreSQL: `go run cmd/postgres/main.go`
-
-- MongoDB: `go run cmd/mongodb/main.go`
-
-The scripts will retrieve the data and write it to each database. A github table database or a collection of repositories will be used. 
-It will also write the result to the report table/collection. 
-
 Using MongoDB Compass, pgAdmib, MySQL WorkBench you can explore data and compare databases.
+
+## Launching with Docker
+
+1. Build the Docker Image Use the following command to build the Docker image:
+
+`docker build -t github_app .`
+
+This command will create an image named `github_app` . The Dockerfile in the main directory of the repository will be used
+
+2. Run the Docker Container Use the following command to run the Docker container:
+
+`docker run --name app --env-file .env.docker.example --rm -d  --network=databases_default github_app`
+
+This command will start a container named `app`, use the environment variables specified in the `.env.docker.example` file, remove the container when it stops, run it in detached mode, and connect it to the `databases_default` network (network name will be available after running docker-compose.yaml with databases.)
 
 ## Coming soon
 
-1. Run by one script and parallel or asynchronous saving to different databases.
-2. Get GitHub PRs, Issues and Contributors for each repository 
-3. Web interface to view saved data and reports.
+1. Get GitHub Issues and Contributors for each repository 
+2. Web interface to view saved data and reports.
 
 You are invited to make a contribution:
 1. Suggest improvements and create Issues

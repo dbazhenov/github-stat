@@ -36,6 +36,15 @@ services:
     ports:
       - "3306:3306"
 
+  # app:
+  #   image: dbs_repos
+  #   env_file:
+  #     - .env_docker
+  #   depends_on:
+  #     - mongodb
+  #     - postgres
+  #     - mysql
+      
 volumes:
   pgdata:
   mongodata:
