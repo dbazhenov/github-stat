@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-app-secret
+type: Opaque
+stringData:
+  GITHUB_TOKEN: ""
+  MONGODB_PASSWORD: mongodb_password
+  PG_PASSWORD: pg_password
+  MYSQL_PASSWORD: mysql_password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: github-app-config
+data:
+  GITHUB_ORG: percona
+  MONGODB_USER: databaseAdmin
+  MONGODB_DB: github
+  MONGODB_HOST: ""
+  MONGODB_PORT: "27017"
+  PG_USER: postgres
+  PG_DB: github
+  PG_HOST: ""
+  PG_PORT: "5432"
+  MYSQL_USER: root
+  MYSQL_DB: github
+  MYSQL_HOST: ""
+  MYSQL_PORT: "3306"
+  DELAY_MINUTES: "0"
+  DEBUG: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: github-app
+  template:
+    metadata:
+      labels:
+        app: github-app
+    spec:
+      containers:
+      - name: github-app
+        image: dbazhenov/github_app:0.0.3
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: github-app-config
+        - secretRef:
+            name: github-app-secret

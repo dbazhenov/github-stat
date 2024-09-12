@@ -78,6 +78,8 @@ Set the parameters in the .env file
 
 - `GITHUB_TOKEN` - Your personalized GitHub Token. If left empty, the limit is 60 API requests per hour, which is enough for a test run. If you add token then 5000 requests per hour. You can get a Token in your GitHub profile settings, it's free, instructions at [the link](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
+If you don't want to use any database, leave HOST empty.
+
 5. Run the script in the terminal
 
 `go run cmd/main/main.go`
@@ -99,6 +101,38 @@ This command will create an image named `github_app` . The Dockerfile in the mai
 `docker run --name app --env-file .env.docker.example --rm -d  --network=databases_default github_app`
 
 This command will start a container named `app`, use the environment variables specified in the `.env.docker.example` file, remove the container when it stops, run it in detached mode, and connect it to the `databases_default` network (network name will be available after running docker-compose.yaml with databases.)
+
+## Launching in Kubernetes
+
+1. Edit the deployment.yaml file. Edit the Secret and ConfigMap sections. Add databases access data and GitHub Token. 
+
+2. Connect to your MySQL and PostgreSQL databases and run the commands from the data/init folder to create the databases and tables. If you don't want to use any database, leave MONGODB_HOST, PG_HOST, MySQL_HOST empty.
+
+3. Launch the application
+
+`kubectl apply -f deployment.yaml -n [namespace]`
+
+Tested with [the Percona Everest](https://docs.percona.com/everest/index.html)
+
+### Creating your own Docker image to run in Kubernetes
+
+A [dockerhub](https://hub.docker.com/) account is required. The build will use the Dockerfile in the main directory, edit it if necessary.
+
+1. Run a Docker image build and push it to DockerHub
+
+`docker buildx build --platform linux/amd64 -t [dockerhub_login]/github_app:[version] --push .`
+
+2. Edit deployment.yaml by adding your image. Launch the application
+
+`kubectl apply -f deployment.yaml -n [namespace]`
+
+### Useful commands
+
+kubectl get pods -n github
+
+kubectl describe pod github-app-857958c877-qp6lz -n github
+
+kubectl logs github-app-6499787d79-sdcdx -n github
 
 ## Coming soon
 

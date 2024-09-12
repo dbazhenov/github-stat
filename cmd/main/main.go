@@ -241,7 +241,7 @@ func getLatestUpdatesFromMySQL(envVars internal.EnvVars) (map[string]string, err
 func getLatestUpdatesFromPostgres(envVars internal.EnvVars) (map[string]string, error) {
 
 	ctx := context.Background()
-	dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s sslmode=disable",
+	dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s",
 		envVars.Postgres.User, envVars.Postgres.Password, envVars.Postgres.DB, envVars.Postgres.Host, envVars.Postgres.Port)
 
 	log.Printf("Check Pulls Latest Updates: PostgreSQL: Connect to: %s", envVars.Postgres.Host)
@@ -451,7 +451,7 @@ func PostgreSQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Reposit
 		StartedAtUnix: time.Now().UnixMilli(),
 	}
 
-	dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s sslmode=disable",
+	dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s",
 		envVars.Postgres.User, envVars.Postgres.Password, envVars.Postgres.DB, envVars.Postgres.Host, envVars.Postgres.Port)
 
 	log.Printf("Databases: PostgreSQL: Start: Connect to: %s", envVars.Postgres.Host)
@@ -736,7 +736,7 @@ func helperReportFinish(envVars internal.EnvVars, report internal.Report, counte
 
 	if envVars.Postgres.Host != "" {
 		g.Go(func() error {
-			dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s sslmode=disable",
+			dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s",
 				envVars.Postgres.User, envVars.Postgres.Password, envVars.Postgres.DB, envVars.Postgres.Host, envVars.Postgres.Port)
 			db, err := sql.Open("postgres", dsn)
 			if err != nil {

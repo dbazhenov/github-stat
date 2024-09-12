@@ -72,7 +72,7 @@ func FetchGitHubPullsByRepos(envVars EnvVars, allRepos []*github.Repository, pul
 				counter["pulls"] += len(pulls)
 				counter["pulls_full"] += len(pulls)
 
-				log.Printf("GitHub API: Repo Full: %s, Total requests: %d, repos: %d, pulls: %d", *repo.Name, counter["repos"], counter["pulls_api_requests"], counter["pulls"])
+				log.Printf("GitHub API: Repo Full: %s, Total requests: %d, repos: %d, pulls: %d", *repo.Name, counter["pulls_api_requests"], counter["repos"], counter["pulls"])
 
 				allPulls[*repo.Name] = append(allPulls[*repo.Name], pulls...)
 
@@ -106,7 +106,7 @@ func FetchGitHubPullsByRepos(envVars EnvVars, allRepos []*github.Repository, pul
 				}
 				counter["pulls_api_requests"]++
 
-				log.Printf("GitHub API: Repo Update: %s, Total requests: %d, repos: %d, pulls: %d", *repo.Name, counter["repos"], counter["pulls_api_requests"], counter["pulls"])
+				log.Printf("GitHub API: Repo Update: %s, Total requests: %d, repos: %d, pulls: %d", *repo.Name, counter["pulls_api_requests"], counter["repos"], counter["pulls"])
 
 				dateBreak := false
 				for _, pull := range pulls {
