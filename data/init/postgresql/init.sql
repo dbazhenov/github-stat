@@ -1,5 +1,10 @@
+\c postgres;
+CREATE EXTENSION pg_stat_monitor;
+
 CREATE DATABASE github;
 \c github;
+
+CREATE EXTENSION pg_stat_monitor;
 
 CREATE SCHEMA IF NOT EXISTS github;
 

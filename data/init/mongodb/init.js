@@ -1,0 +1,1 @@
+db.setProfilingLevel(1);

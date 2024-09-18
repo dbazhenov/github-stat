@@ -1,17 +1,6 @@
 version: '3.7'
 services:
 
-  mongodb:
-    image: "percona/percona-server-mongodb:7.0-arm64"
-    volumes:
-      - mongodata:/data/db
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: password
-      MONGO_INITDB_DATABASE: github
-    ports: 
-      - "27017:27017"
-
   postgres:
     image: percona/percona-distribution-postgresql:16.2-multi
     environment:
@@ -24,7 +13,30 @@ services:
       - ./data/init/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports: 
       - "5432:5432"
+    command: >
+      bash -c "
+        postgres -c shared_preload_libraries=pg_stat_monitor \
+                -c pg_stat_monitor.pgsm_query_max_len=10000 \
+                -c pg_stat_monitor.pgsm_normalized_query=0 & \
+        sleep 20 && \
+        PGPASSWORD=password psql -U postgres --host=localhost -d github -c 'CREATE EXTENSION pg_stat_monitor;' --set=sslmode=disable && \
+        PGPASSWORD=password psql -U postgres --host=localhost -d postgres -c 'CREATE EXTENSION pg_stat_monitor;' --set=sslmode=disable
+      "
 
+  mongodb:
+    image: "percona/percona-server-mongodb:7.0-arm64"
+    volumes:
+      - mongodata:/data/db
+      - ./data/init/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+      - ./data/init/mongodb/mongod.conf:/etc/mongod.conf:ro
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: github
+    ports: 
+      - "27017:27017"
+    command: ["mongod", "--config", "/etc/mongod.conf"]
+      
   mysql:
     image: "percona/percona-server:8.3.0-1.1-multi"
     volumes:
@@ -35,6 +47,11 @@ services:
       MYSQL_DATABASE: github
     ports:
       - "3306:3306"
+    # command: --performance-schema=ON --innodb_monitor_enable=all --innodb_monitor_enable=module_innodb --innodb_monitor_enable=module_server --innodb_monitor_enable=module_dml --innodb_monitor_enable=module_ddl --innodb_monitor_enable=module_trx --innodb_monitor_enable=module_os --innodb_monitor_enable=module_purge --innodb_monitor_enable=module_log --innodb_monitor_enable=module_buffer --innodb_monitor_enable=module_index --innodb_monitor_enable=module_ibuf_system --innodb_monitor_enable=module_buffer_page --innodb_monitor_enable=module_adaptive_hash
+    command: >
+      --performance-schema --innodb_monitor_enable=all
+      --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
+
 
   pmm-server:
       image: percona/pmm-server:2
@@ -42,18 +59,34 @@ services:
       container_name: pmm-server
       restart: always
       ports:
-        - 80:80
+        - 8081:80
         - 443:443
       volumes:
         - pmm-data:/srv
       environment:
-        - PMM_DEBUG=1
         - DISABLE_TELEMETRY=0
       healthcheck:
         test: ["CMD", "curl", "-f", "http://localhost"]
         interval: 30s
         timeout: 10s
         retries: 5
+
+  pmm-client-postgres:
+    image: percona/pmm-client:2
+    platform: "linux/amd64"
+    container_name: pmm-client-postgres
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: admin
+      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor"
 
   pmm-client-mysql:
     image: percona/pmm-client:2
@@ -70,7 +103,9 @@ services:
       PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
       PMM_AGENT_SETUP: 1
       PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --username=root --password=password --host=mysql --port=3306"
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306 MYSQL_SERVICE"
+    # volumes:
+    #   - pmm-client-mysql:/srv
 
   pmm-client-mongodb:
     image: percona/pmm-client:2
@@ -87,24 +122,8 @@ services:
       PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
       PMM_AGENT_SETUP: 1
       PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=root --password=password --host=mongodb --port=27017"
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=pmm --password=pmm --host=mongodb --port=27017 --query-source=profiler"
   
-  pmm-client-postgres:
-    image: percona/pmm-client:2
-    platform: "linux/amd64"
-    container_name: pmm-client-postgres
-    depends_on:
-      pmm-server:
-        condition: service_healthy
-    environment:
-      PMM_AGENT_SERVER_ADDRESS: pmm-server
-      PMM_AGENT_SERVER_USERNAME: admin
-      PMM_AGENT_SERVER_PASSWORD: admin
-      PMM_AGENT_SERVER_INSECURE_TLS: 1
-      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
-      PMM_AGENT_SETUP: 1
-      PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432"
 
   # app:
   #   image: dbs_repos
@@ -120,3 +139,4 @@ volumes:
   pgdata:
   mysqldata:
   pmm-data:
+  # pmm-client-mysql:
