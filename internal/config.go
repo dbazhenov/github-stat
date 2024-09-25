@@ -100,3 +100,14 @@ func GetEnvVars() (EnvVars, error) {
 
 	return envVars, nil
 }
+
+func GetConfig() EnvVars {
+	log.Print("App: Read config")
+
+	envVars, err := GetEnvVars()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	return envVars
+}

@@ -45,86 +45,88 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: github
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-uroot", "-proot-password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     ports:
       - "3306:3306"
-    # command: --performance-schema=ON --innodb_monitor_enable=all --innodb_monitor_enable=module_innodb --innodb_monitor_enable=module_server --innodb_monitor_enable=module_dml --innodb_monitor_enable=module_ddl --innodb_monitor_enable=module_trx --innodb_monitor_enable=module_os --innodb_monitor_enable=module_purge --innodb_monitor_enable=module_log --innodb_monitor_enable=module_buffer --innodb_monitor_enable=module_index --innodb_monitor_enable=module_ibuf_system --innodb_monitor_enable=module_buffer_page --innodb_monitor_enable=module_adaptive_hash
     command: >
       --performance-schema --innodb_monitor_enable=all
       --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
 
+  # pmm-server:
+  #     image: percona/pmm-server:2
+  #     platform: "linux/amd64"
+  #     container_name: pmm-server
+  #     restart: always
+  #     ports:
+  #       - 8081:80
+  #       - 443:443
+  #     volumes:
+  #       - pmm-data:/srv
+  #     environment:
+  #       - DISABLE_TELEMETRY=0
+  #     healthcheck:
+  #       test: ["CMD", "curl", "-f", "http://localhost"]
+  #       interval: 30s
+  #       timeout: 10s
+  #       retries: 5
 
-  pmm-server:
-      image: percona/pmm-server:2
-      platform: "linux/amd64"
-      container_name: pmm-server
-      restart: always
-      ports:
-        - 8081:80
-        - 443:443
-      volumes:
-        - pmm-data:/srv
-      environment:
-        - DISABLE_TELEMETRY=0
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost"]
-        interval: 30s
-        timeout: 10s
-        retries: 5
+  # pmm-client-postgres:
+  #   image: percona/pmm-client:2
+  #   platform: "linux/amd64"
+  #   container_name: pmm-client-postgres
+  #   depends_on:
+  #     pmm-server:
+  #       condition: service_healthy
+  #   environment:
+  #     PMM_AGENT_SERVER_ADDRESS: pmm-server
+  #     PMM_AGENT_SERVER_USERNAME: admin
+  #     PMM_AGENT_SERVER_PASSWORD: admin
+  #     PMM_AGENT_SERVER_INSECURE_TLS: 1
+  #     PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+  #     PMM_AGENT_SETUP: 1
+  #     PMM_AGENT_SETUP_FORCE: 1
+  #     PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor"
 
-  pmm-client-postgres:
-    image: percona/pmm-client:2
-    platform: "linux/amd64"
-    container_name: pmm-client-postgres
-    depends_on:
-      pmm-server:
-        condition: service_healthy
-    environment:
-      PMM_AGENT_SERVER_ADDRESS: pmm-server
-      PMM_AGENT_SERVER_USERNAME: admin
-      PMM_AGENT_SERVER_PASSWORD: admin
-      PMM_AGENT_SERVER_INSECURE_TLS: 1
-      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
-      PMM_AGENT_SETUP: 1
-      PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor"
+  # pmm-client-mysql:
+  #   image: percona/pmm-client:2
+  #   platform: "linux/amd64"
+  #   container_name: pmm-client-mysql
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+  #     pmm-server:
+  #       condition: service_healthy
+  #   environment:
+  #     PMM_AGENT_SERVER_ADDRESS: pmm-server
+  #     PMM_AGENT_SERVER_USERNAME: admin
+  #     PMM_AGENT_SERVER_PASSWORD: admin
+  #     PMM_AGENT_SERVER_INSECURE_TLS: 1
+  #     PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+  #     PMM_AGENT_SETUP: 1
+  #     PMM_AGENT_SETUP_FORCE: 1
+  #     PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306"
 
-  pmm-client-mysql:
-    image: percona/pmm-client:2
-    platform: "linux/amd64"
-    container_name: pmm-client-mysql
-    depends_on:
-      pmm-server:
-        condition: service_healthy
-    environment:
-      PMM_AGENT_SERVER_ADDRESS: pmm-server
-      PMM_AGENT_SERVER_USERNAME: admin
-      PMM_AGENT_SERVER_PASSWORD: admin
-      PMM_AGENT_SERVER_INSECURE_TLS: 1
-      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
-      PMM_AGENT_SETUP: 1
-      PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306 MYSQL_SERVICE"
-    # volumes:
-    #   - pmm-client-mysql:/srv
-
-  pmm-client-mongodb:
-    image: percona/pmm-client:2
-    platform: "linux/amd64"
-    container_name: pmm-client-mongodb
-    depends_on:
-      pmm-server:
-        condition: service_healthy
-    environment:
-      PMM_AGENT_SERVER_ADDRESS: pmm-server
-      PMM_AGENT_SERVER_USERNAME: admin
-      PMM_AGENT_SERVER_PASSWORD: admin
-      PMM_AGENT_SERVER_INSECURE_TLS: 1
-      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
-      PMM_AGENT_SETUP: 1
-      PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=pmm --password=pmm --host=mongodb --port=27017 --query-source=profiler"
+  # pmm-client-mongodb:
+  #   image: percona/pmm-client:2
+  #   platform: "linux/amd64"
+  #   container_name: pmm-client-mongodb
+  #   depends_on:
+  #     pmm-server:
+  #       condition: service_healthy
+  #   environment:
+  #     PMM_AGENT_SERVER_ADDRESS: pmm-server
+  #     PMM_AGENT_SERVER_USERNAME: admin
+  #     PMM_AGENT_SERVER_PASSWORD: admin
+  #     PMM_AGENT_SERVER_INSECURE_TLS: 1
+  #     PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+  #     PMM_AGENT_SETUP: 1
+  #     PMM_AGENT_SETUP_FORCE: 1
+  #     PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=root --password=password --host=mongodb --port=27017 --query-source=profiler"
   
-
   # app:
   #   image: dbs_repos
   #   env_file:
@@ -139,4 +141,3 @@ volumes:
   pgdata:
   mysqldata:
   pmm-data:
-  # pmm-client-mysql:
