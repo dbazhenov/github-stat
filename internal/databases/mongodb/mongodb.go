@@ -123,14 +123,19 @@ func FindPullRequests(client *mongo.Client, dbName string, collectionName string
 
 }
 
-func FindDocuments(client *mongo.Client, dbName string, collectionName string, filter bson.D, sort bson.D) ([]interface{}, error) {
+func FindDocuments(client *mongo.Client, dbName string, collectionName string, filter bson.D, sort bson.D, limit int64) ([]interface{}, error) {
 
 	ctx := context.Background()
 	collection := client.Database(dbName).Collection(collectionName)
 
 	var documents []interface{}
+	var opts *options.FindOptions
 
-	opts := options.Find().SetSort(sort)
+	if limit > 0 {
+		opts = options.Find().SetSort(sort).SetLimit(limit)
+	} else {
+		opts = options.Find().SetSort(sort)
+	}
 
 	cursor, err := collection.Find(ctx, filter, opts)
 	if err != nil {

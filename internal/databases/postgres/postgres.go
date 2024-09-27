@@ -42,6 +42,24 @@ func SelectString(db *sql.DB, query string) (string, error) {
 	return repo, nil
 }
 
+func SelectListOfStrings(db *sql.DB, query string) ([]string, error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var str string
+		if err := rows.Scan(&str); err != nil {
+			return nil, err
+		}
+		results = append(results, str)
+	}
+	return results, nil
+}
+
 func SelectListOfInt(db *sql.DB, query string) ([]int, error) {
 	rows, err := db.Query(query)
 	if err != nil {

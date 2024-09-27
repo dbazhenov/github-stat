@@ -1,0 +1,55 @@
+package valkey
+
+import (
+	"encoding/json"
+	"fmt"
+	app "github-stat/internal"
+	"log"
+
+	"github.com/go-redis/redis"
+)
+
+var Valkey *redis.Client
+var Load app.Load
+
+func InitValkey(envVars app.EnvVars) {
+
+	addr := fmt.Sprintf("%s:%s", envVars.Valkey.Addr, envVars.Valkey.Port)
+	Valkey = redis.NewClient(&redis.Options{
+		Addr:     addr,
+		Password: envVars.Valkey.Password,
+		DB:       envVars.Valkey.DB,
+	})
+
+	_, err := Valkey.Ping().Result()
+	if err != nil {
+		log.Fatalf("Valkey: Failed to connect to: %v", err)
+	} else {
+		log.Printf("Valkey: Connect: %v", Valkey.Options().Addr)
+	}
+}
+
+func Connect(addr string) *redis.Client {
+	Valkey = redis.NewClient(&redis.Options{
+		Addr: addr, // "localhost:6379"
+	})
+	return Valkey
+}
+
+func SaveConfigToValkey(load app.Load) error {
+	data, err := json.Marshal(load)
+	if err != nil {
+		return err
+	}
+	return Valkey.Set("load_config", data, 0).Err()
+}
+
+func LoadConfigFromValkey() (app.Load, error) {
+	var load app.Load
+	data, err := Valkey.Get("load_config").Result()
+	if err != nil {
+		return load, err
+	}
+	err = json.Unmarshal([]byte(data), &load)
+	return load, err
+}

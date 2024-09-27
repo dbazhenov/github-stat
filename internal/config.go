@@ -9,16 +9,23 @@ import (
 )
 
 type EnvVars struct {
-	MySQL    ConfigMySQL
-	MongoDB  ConfigMongoDB
-	GitHub   ConfigGitHub
-	Postgres ConfigPostgres
-	App      ConfigApp
+	MySQL        ConfigMySQL
+	MongoDB      ConfigMongoDB
+	GitHub       ConfigGitHub
+	Postgres     ConfigPostgres
+	Valkey       ConfigValkey
+	ControlPanel ConfigControlPanel
+	App          ConfigApp
 }
 
 type ConfigApp struct {
 	DelayMinutes int
 	Debug        bool
+}
+
+type ConfigControlPanel struct {
+	Host string
+	Port string
 }
 
 type ConfigGitHub struct {
@@ -49,6 +56,15 @@ type ConfigPostgres struct {
 	Host     string
 	Port     string
 }
+
+type ConfigValkey struct {
+	Addr     string
+	Port     string
+	DB       int
+	Password string
+}
+
+var Config EnvVars
 
 func GetEnvVars() (EnvVars, error) {
 
@@ -83,6 +99,20 @@ func GetEnvVars() (EnvVars, error) {
 	envVars.MySQL.Host = os.Getenv("MYSQL_HOST")
 	envVars.MySQL.Port = os.Getenv("MYSQL_PORT")
 
+	envVars.Valkey.Addr = os.Getenv("VALKEY_ADDR")
+	envVars.Valkey.Port = os.Getenv("VALKEY_PORT")
+	envVars.Valkey.Password = os.Getenv("VALKEY_PASSWORD")
+
+	envVars.ControlPanel.Host = os.Getenv("CONTROL_PANEL_HOST")
+	envVars.ControlPanel.Port = os.Getenv("CONTROL_PANEL_PORT")
+
+	stringValketDB := os.Getenv("VALKEY_DB")
+	valkeyDBint, err := strconv.Atoi(stringValketDB)
+	if err != nil {
+		log.Fatalf("Error converting VALKEY_DB to int: %v", err)
+	}
+	envVars.Valkey.DB = valkeyDBint
+
 	debugStr := os.Getenv("DEBUG")
 	debug, err := strconv.ParseBool(debugStr)
 	if err != nil {
@@ -110,4 +140,15 @@ func GetConfig() EnvVars {
 	}
 
 	return envVars
+}
+
+func InitConfig() {
+	log.Print("App: Read config")
+
+	envVars, err := GetEnvVars()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	Config = envVars
 }
