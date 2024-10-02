@@ -1,0 +1,77 @@
+{{ define "dataset" }}
+<div class="container my-4">
+    <div id="loading-indicator" style="display: none; text-align: center;">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p>Loading...</p>
+    </div>
+    <div id="dataset-content">
+    <div class="row">
+        <div class="col-md-4">
+        <h3>MySQL</h3>
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Data</th>
+                <th>Count</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>Repositories</td>
+                <td id="mysql-repositories">{{ .Dataset.MySQL.Repositories }}</td>
+            </tr>
+            <tr>
+                <td>Pull Requests</td>
+                <td id="mysql-pull-requests">{{ .Dataset.MySQL.PullRequests }}</td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+        <div class="col-md-4">
+        <h3>PostgreSQL</h3>
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Data</th>
+                <th>Count</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>Repositories</td>
+                <td id="postgresql-repositories">{{ .Dataset.PostgreSQL.Repositories }}</td>
+            </tr>
+            <tr>
+                <td>Pull Requests</td>
+                <td id="postgresql-pull-requests">{{ .Dataset.PostgreSQL.PullRequests }}</td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+        <div class="col-md-4">
+        <h3>MongoDB</h3>
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Data</th>
+                <th>Count</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>Repositories</td>
+                <td id="mongodb-repositories">{{ .Dataset.MongoDB.Repositories }}</td>
+            </tr>
+            <tr>
+                <td>Pull Requests</td>
+                <td id="mongodb-pull-requests">{{ .Dataset.MongoDB.PullRequests }}</td>
+            </tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    </div>
+</div>
+{{ end }}

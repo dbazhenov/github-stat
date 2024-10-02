@@ -27,6 +27,21 @@ func Connect(envVars app.EnvVars) (*sql.DB, error) {
 	return db, nil
 }
 
+func CheckMySQL(connectionString string) string {
+	db, err := sql.Open("mysql", connectionString)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	defer db.Close()
+
+	err = db.Ping()
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	return "Connected"
+}
+
 func SelectInt(db *sql.DB, query string) (int, error) {
 	var integer int
 	err := db.QueryRow(query).Scan(&integer)

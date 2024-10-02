@@ -53,3 +53,21 @@ func LoadConfigFromValkey() (app.Load, error) {
 	err = json.Unmarshal([]byte(data), &load)
 	return load, err
 }
+
+func SaveToValkey(key string, settings app.Connections) error {
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	return Valkey.Set(key, data, 0).Err()
+}
+
+func LoadFromValkey(key string) (app.Connections, error) {
+	var settings app.Connections
+	data, err := Valkey.Get(key).Result()
+	if err != nil {
+		return settings, err
+	}
+	err = json.Unmarshal([]byte(data), &settings)
+	return settings, err
+}

@@ -34,27 +34,30 @@ type ConfigGitHub struct {
 }
 
 type ConfigMySQL struct {
-	DB       string
-	User     string
-	Password string
-	Host     string
-	Port     string
+	DB               string
+	User             string
+	Password         string
+	Host             string
+	Port             string
+	ConnectionString string
 }
 
 type ConfigMongoDB struct {
-	DB       string
-	User     string
-	Password string
-	Host     string
-	Port     string
+	DB               string
+	User             string
+	Password         string
+	Host             string
+	Port             string
+	ConnectionString string
 }
 
 type ConfigPostgres struct {
-	DB       string
-	User     string
-	Password string
-	Host     string
-	Port     string
+	DB               string
+	User             string
+	Password         string
+	Host             string
+	Port             string
+	ConnectionString string
 }
 
 type ConfigValkey struct {

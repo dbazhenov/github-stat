@@ -1,110 +1,35 @@
 {{ define "index" }}
 
 {{ template "header" }}
-
 <div class="container">
-  <h1>Control panel</h1>
+  <h1 class="my-4">Demo App</h1>
   
-  <div class="form-group my-4">
-      <label for="mysqlConnectionsRange">MySQL Connections</label>
-      <input type="range" class="form-control-range w-100" id="mysqlConnectionsRange" min="0" max="10" value="{{.MySQLConnections}}">
-      <span id="mysqlConnectionsValue">{{.MySQLConnections}}</span>
-  </div>
-  <div class="form-group my-4">
-      <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="mysqlSwitch" role="switch" {{if .MySQLSwitch}}checked{{end}}>
-          <label class="form-check-label" for="mysqlSwitch">MySQL Switch</label>
-      </div>
-  </div>
+  <!-- Nav tabs -->
+  <ul class="nav nav-tabs my-4" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="control-panel-tab" data-bs-toggle="tab" data-bs-target="#control-panel" type="button" role="tab" aria-controls="control-panel" aria-selected="true">Load Control Panel</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab" aria-controls="settings" aria-selected="false">Settings</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="dataset-tab" data-bs-toggle="tab" data-bs-target="#dataset" type="button" role="tab" aria-controls="dataset" aria-selected="false">Dataset</button>
+    </li>
+  </ul>
 
-  <div class="form-group my-4">
-      <label for="postgresqlConnectionsRange">PostgreSQL Connections</label>
-      <input type="range" class="form-control-range w-100" id="postgresqlConnectionsRange" min="0" max="10" value="{{.PostgreSQLConnections}}">
-      <span id="postgresqlConnectionsValue">{{.PostgreSQLConnections}}</span>
-  </div>
-  <div class="form-group my-4">
-      <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="postgresqlSwitch" role="switch" {{if .PostgreSQLSwitch}}checked{{end}}>
-          <label class="form-check-label" for="postgresqlSwitch">PostgreSQL Switch</label>
-      </div>
-  </div>
-
-  <div class="form-group my-4">
-      <label for="mongodbConnectionsRange">MongoDB Connections</label>
-      <input type="range" class="form-control-range w-100" id="mongodbConnectionsRange" min="0" max="10" value="{{.MongoDBConnections}}">
-      <span id="mongodbConnectionsValue">{{.MongoDBConnections}}</span>
-  </div>
-  <div class="form-group my-4">
-      <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="mongodbSwitch" role="switch" {{if .MongoDBSwitch}}checked{{end}}>
-          <label class="form-check-label" for="mongodbSwitch">MongoDB Switch</label>
-      </div>
+  <!-- Tab panes -->
+  <div class="tab-content" id="myTabContent">
+    <div class="tab-pane fade show active" id="control-panel" role="tabpanel" aria-labelledby="control-panel-tab">
+      {{ template "control" . }}
+    </div>
+    <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+      {{ template "settings" . }}
+    </div>
+    <div class="tab-pane fade" id="dataset" role="tabpanel" aria-labelledby="dataset-tab">
+      {{ template "dataset" . }}
+    </div>
   </div>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  fetch('/start')
-    .then(response => response.json())
-    .then(data => {
-      document.getElementById('mysqlConnectionsRange').value = data.mysql_connections;
-      document.getElementById('mysqlConnectionsValue').innerText = data.mysql_connections;
-      document.getElementById('postgresqlConnectionsRange').value = data.postgresql_connections;
-      document.getElementById('postgresqlConnectionsValue').innerText = data.postgresql_connections;
-      document.getElementById('mongodbConnectionsRange').value = data.mongodb_connections;
-      document.getElementById('mongodbConnectionsValue').innerText = data.mongodb_connections;
-      document.getElementById('mysqlSwitch').checked = data.mysql_switch;
-      document.getElementById('postgresqlSwitch').checked = data.postgresql_switch;
-      document.getElementById('mongodbSwitch').checked = data.mongodb_switch;
-    })
-    .catch((error) => console.error('Error:', error));
-});
-
-function updateConnections() {
-  var mysqlValue = parseInt(document.getElementById('mysqlConnectionsRange').value, 10);
-  var postgresqlValue = parseInt(document.getElementById('postgresqlConnectionsRange').value, 10);
-  var mongodbValue = parseInt(document.getElementById('mongodbConnectionsRange').value, 10);
-  var mysqlSwitch = document.getElementById('mysqlSwitch').checked;
-  var postgresqlSwitch = document.getElementById('postgresqlSwitch').checked;
-  var mongodbSwitch = document.getElementById('mongodbSwitch').checked;
-
-  fetch('/config', {
-      method: 'POST',
-      headers: {
-          'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-          mysql_connections: mysqlValue,
-          postgresql_connections: postgresqlValue,
-          mongodb_connections: mongodbValue,
-          mysql_switch: mysqlSwitch,
-          postgresql_switch: postgresqlSwitch,
-          mongodb_switch: mongodbSwitch
-      })
-  })
-  .then(response => response.json())
-  .then(data => {
-      console.log('Success:', data);
-      document.getElementById('mysqlConnectionsRange').value = data.mysql_connections;
-      document.getElementById('mysqlConnectionsValue').innerText = data.mysql_connections;
-      document.getElementById('postgresqlConnectionsRange').value = data.postgresql_connections;
-      document.getElementById('postgresqlConnectionsValue').innerText = data.postgresql_connections;
-      document.getElementById('mongodbConnectionsRange').value = data.mongodb_connections;
-      document.getElementById('mongodbConnectionsValue').innerText = data.mongodb_connections;
-      document.getElementById('mysqlSwitch').checked = data.mysql_switch;
-      document.getElementById('postgresqlSwitch').checked = data.postgresql_switch;
-      document.getElementById('mongodbSwitch').checked = data.mongodb_switch;
-  })
-  .catch((error) => console.error('Error:', error));
-}
-
-document.getElementById('mysqlConnectionsRange').addEventListener('input', updateConnections);
-document.getElementById('postgresqlConnectionsRange').addEventListener('input', updateConnections);
-document.getElementById('mongodbConnectionsRange').addEventListener('input', updateConnections);
-document.getElementById('mysqlSwitch').addEventListener('change', updateConnections);
-document.getElementById('postgresqlSwitch').addEventListener('change', updateConnections);
-document.getElementById('mongodbSwitch').addEventListener('change', updateConnections);
-</script>
 
 {{ template "footer" }}
 

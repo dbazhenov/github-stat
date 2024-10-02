@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	app "github-stat/internal"
 
@@ -27,6 +28,29 @@ func Connect(envVars app.EnvVars, ctx context.Context) (*mongo.Client, error) {
 	}
 
 	return mongodb, nil
+}
+
+func CheckMongoDB(connectionString string) string {
+	client, err := mongo.NewClient(options.Client().ApplyURI(connectionString))
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = client.Connect(ctx)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	defer client.Disconnect(ctx)
+
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+
+	return "Connected"
 }
 
 func CountDocuments(client *mongo.Client, dbName, collectionName string, filter bson.D) (int64, error) {

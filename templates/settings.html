@@ -1,0 +1,20 @@
+{{ define "settings" }}
+<form id="settingsForm" class="my-4">
+    <div class="mb-3 my-3">
+      <label for="mysqlConnectionString" class="form-label">MySQL Connection String</label>
+      <input type="text" class="form-control" id="mysqlConnectionString" name="mysqlConnectionString" value="{{.Settings.MySQLConnectionString}}">
+      <small class="form-text text-muted" id="mysqlStatus">{{.Settings.MySQLStatus}}</small>
+    </div>
+    <div class="mb-3 my-3">
+      <label for="mongodbConnectionString" class="form-label">MongoDB Connection String</label>
+      <input type="text" class="form-control" id="mongodbConnectionString" name="mongodbConnectionString" value="{{.Settings.MongoDBConnectionString}}">
+      <small class="form-text text-muted" id="mongodbStatus">{{.Settings.MongoDBStatus}}</small>
+    </div>
+    <div class="mb-3 my-3">
+      <label for="postgresqlConnectionString" class="form-label">PostgreSQL Connection String</label>
+      <input type="text" class="form-control" id="postgresqlConnectionString" name="postgresqlConnectionString" value="{{.Settings.PostgresConnectionString}}">
+      <small class="form-text text-muted" id="postgresqlStatus">{{.Settings.PostgresStatus}}</small>
+    </div>
+    <button type="submit" class="btn btn-primary">Connect and save</button>
+  </form>
+{{ end }}

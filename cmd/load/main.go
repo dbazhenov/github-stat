@@ -27,9 +27,6 @@ var LoadConfig = app.Load{
 	MySQLConnections:      1,
 	PostgreSQLConnections: 1,
 	MongoDBConnections:    1,
-	MySQLSwitch:           true,
-	PostgreSQLSwitch:      true,
-	MongoDBSwitch:         true,
 }
 
 func main() {
@@ -46,10 +43,16 @@ func main() {
 		// Getting settings from Valkey
 		// The function will fill the global variable LoadConfig with data from Valkey. The control is performed in the Control Panel.
 		checkLoadSetting()
+		checkConnectSettings()
 
 		// Running MySQL, PotgreSQL, MongoDB threads
 		runDatabases()
 	}
+}
+
+func checkConnectSettings() {
+
+	log.Printf("Config: %v", app.Config)
 }
 
 func checkLoadSetting() {
@@ -121,7 +124,7 @@ func runMySQL() error {
 	var testDB *sql.DB
 	var err error
 
-	if LoadConfig.MySQLSwitch {
+	if LoadConfig.MySQLSwitch1 {
 
 		testDB, err = mysql.Connect(app.Config)
 		if err != nil {
@@ -163,7 +166,7 @@ func runMySQL() error {
 			pulls_ids, _ := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM github.pulls;")
 			log.Printf("MySQL: Pulls: Uniq IDs: %d", len(pulls_ids))
 
-			if LoadConfig.MySQLSwitch {
+			if LoadConfig.MySQLSwitch1 {
 				query := `SELECT data FROM github.pulls 
 					WHERE STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(data, '$.created_at')), '%Y-%m-%dT%H:%i:%sZ') >= NOW() - INTERVAL 3 MONTH 
 					LIMIT 10;`
@@ -191,7 +194,7 @@ func runMySQL() error {
 
 	wg.Wait()
 
-	if LoadConfig.MySQLSwitch {
+	if LoadConfig.MySQLSwitch1 {
 		result, err := mysql.DropTable(testDB, testTable)
 		if err != nil {
 			log.Fatal(err)
@@ -213,7 +216,7 @@ func runPostgreSQL() error {
 	var testDB *sql.DB
 	var err error
 
-	if LoadConfig.PostgreSQLSwitch {
+	if LoadConfig.PostgresSwitch1 {
 
 		testDB, err = postgres.Connect(app.Config)
 		if err != nil {
@@ -255,7 +258,7 @@ func runPostgreSQL() error {
 			pulls_ids, _ := postgres.SelectListOfInt(db, "SELECT DISTINCT id FROM github.pulls;")
 			log.Printf("PostgreSQL: Pulls: Uniq IDs: %d", len(pulls_ids))
 
-			if LoadConfig.PostgreSQLSwitch {
+			if LoadConfig.PostgresSwitch1 {
 				query := `
 					SELECT data 
 					FROM github.pulls 
@@ -284,7 +287,7 @@ func runPostgreSQL() error {
 
 	wg.Wait()
 
-	if LoadConfig.PostgreSQLSwitch {
+	if LoadConfig.PostgresSwitch1 {
 		result, err := postgres.DropTable(testDB, testTable)
 		if err != nil {
 			log.Fatal(err)
@@ -383,7 +386,7 @@ func runMongoDB() error {
 			}
 			log.Printf("MongoDB: Find Pull Requests: %d", len(prs))
 
-			if LoadConfig.MongoDBSwitch {
+			if LoadConfig.MongoDBSwitch1 {
 
 				filter_repos := bson.D{}
 				sort_repos := bson.D{{Key: "stargazerscount", Value: -1}}
@@ -434,7 +437,7 @@ func runMongoDB() error {
 
 	wg.Wait()
 
-	if LoadConfig.MongoDBSwitch {
+	if LoadConfig.MongoDBSwitch1 {
 		drop_ctx := context.Background()
 
 		drop_client, err := mongodb.Connect(app.Config, drop_ctx)
