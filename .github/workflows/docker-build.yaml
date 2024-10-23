@@ -2,11 +2,9 @@ name: Build and Push Docker Images
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
   pull_request:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -31,7 +29,7 @@ jobs:
       - name: Build and push Docker images for load app
         uses: docker/build-push-action@v2
         with:
-          context: ./cmd/load
+          context: .
           file: ./cmd/load/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
@@ -40,7 +38,7 @@ jobs:
       - name: Build and push Docker images for web app
         uses: docker/build-push-action@v2
         with:
-          context: ./cmd/web
+          context: .
           file: ./cmd/web/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
@@ -49,7 +47,7 @@ jobs:
       - name: Build and push Docker images for dataset app
         uses: docker/build-push-action@v2
         with:
-          context: ./cmd/dataset
+          context: .
           file: ./cmd/dataset/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
