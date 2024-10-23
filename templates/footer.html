@@ -102,6 +102,19 @@
         document.getElementById('mysqlStatus').innerText = data.mysql_status;
         document.getElementById('mongodbStatus').innerText = data.mongodb_status;
         document.getElementById('postgresqlStatus').innerText = data.postgres_status;
+
+        var createPostgresDBButton = document.getElementById('createPostgresDBButton');
+        var createMysqlDBButton = document.getElementById('createMysqlDBButton');
+        if (data.postgres_create_schema === true) {
+            createPostgresDBButton.classList.remove('d-none');
+        } else {
+            createPostgresDBButton.classList.add('d-none');
+        }
+        if (data.mysql_create_schema === true) {
+            createMysqlDBButton.classList.remove('d-none');
+        } else {
+            createMysqlDBButton.classList.add('d-none');
+        }
       })
       .catch(error => console.error('Error:', error));
     });
@@ -110,22 +123,78 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     $('#settingsForm').on('submit', function(event) {
-      event.preventDefault(); 
-      $.ajax({
-        type: 'POST',
-        url: '/settings',
-        data: $(this).serialize(), 
-        success: function(response) {
-          $('#mysqlStatus').text(response.mysql_status);
-          $('#mongodbStatus').text(response.mongodb_status);
-          $('#postgresqlStatus').text(response.postgres_status);
-        },
-        error: function(xhr, status, error) {
-          alert('Error: ' + error); 
-        }
-      });
+        event.preventDefault();
+        $.ajax({
+            type: 'POST',
+            url: '/settings',
+            data: $(this).serialize(),
+            success: function(response) {
+                $('#mysqlStatus').text(response.mysql_status);
+                $('#mongodbStatus').text(response.mongodb_status);
+                $('#postgresqlStatus').text(response.postgres_status);
+                var createPostgresDBButton = $('#createPostgresDBButton');
+                var createMysqlDBButton = $('#createMysqlDBButton');
+                if (response.postgres_create_schema === true) {
+                    createPostgresDBButton.removeClass('d-none');
+                } else {
+                    createPostgresDBButton.addClass('d-none');
+                }
+                if (response.mysql_create_schema === true) {
+                    createMysqlDBButton.removeClass('d-none');
+                } else {
+                    createMysqlDBButton.addClass('d-none');
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Error: ' + error);
+            }
+        });
     });
-  });
+
+    $('#createPostgresDBButton').on('click', function() {
+        var form = $('#settingsForm')[0];
+        var formData = new FormData(form);
+        formData.append('create_db_postgres', '1');
+        fetch('/settings', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            $('#mysqlStatus').text(data.mysql_status);
+            $('#mongodbStatus').text(data.mongodb_status);
+            $('#postgresqlStatus').text(data.postgres_status);
+            if (data.postgres_create_schema === true) {
+                $(this).removeClass('d-none');
+            } else {
+                $(this).addClass('d-none');
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    });
+
+    $('#createMysqlDBButton').on('click', function() {
+        var form = $('#settingsForm')[0];
+        var formData = new FormData(form);
+        formData.append('create_db_mysql', '1');
+        fetch('/settings', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            $('#mysqlStatus').text(data.mysql_status);
+            $('#mongodbStatus').text(data.mongodb_status);
+            $('#postgresqlStatus').text(data.postgres_status);
+            if (data.mysql_create_schema === true) {
+                $(this).removeClass('d-none');
+            } else {
+                $(this).addClass('d-none');
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    });
+});
 </script>
 <script>
   document.addEventListener('DOMContentLoaded', function() {

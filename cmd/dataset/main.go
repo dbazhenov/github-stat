@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
-	"github-stat/internal"
+	app "github-stat/internal"
+
+	"github-stat/internal/databases/mongodb"
+	"github-stat/internal/databases/mysql"
+	"github-stat/internal/databases/postgres"
+	"github-stat/internal/databases/valkey"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/go-github/github"
@@ -22,23 +25,67 @@ import (
 func main() {
 
 	// Get the configuration from environment variables or .env file.
-	envVars := getConfig()
+	// app.Config - contains all environment variables
+	app.InitConfig()
+
+	// Valkey client (valkey.Valkey) initialization
+	valkey.InitValkey(app.Config)
+	defer valkey.Valkey.Close()
 
 	for {
+
+		checkConnectSettings()
+
 		// The main process of getting data from GitHub API and store it into MySQL, PostgreSQL, MongoDB databases.
-		fetchGitHubData(envVars)
+		fetchGitHubData(app.Config)
 
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
-		helperSleep(envVars)
+		helperSleep(app.Config)
 	}
 }
 
-func fetchGitHubData(envVars internal.EnvVars) {
+func checkConnectSettings() {
+
+	settings, _ := valkey.LoadFromValkey("db_connections")
+
+	if settings.MongoDBConnectionString != "" {
+		app.Config.MongoDB.ConnectionString = settings.MongoDBConnectionString
+	} else {
+		app.Config.MongoDB.ConnectionString = mongodb.GetConnectionString(app.Config)
+	}
+
+	if app.Config.MongoDB.ConnectionString != "" {
+		app.Config.MongoDB.ConnectionStatus = mongodb.CheckMongoDB(app.Config.MongoDB.ConnectionString)
+	}
+
+	if settings.MySQLConnectionString != "" {
+		app.Config.MySQL.ConnectionString = settings.MySQLConnectionString
+	} else {
+		app.Config.MySQL.ConnectionString = mysql.GetConnectionString(app.Config)
+	}
+
+	if app.Config.MySQL.ConnectionString != "" {
+		app.Config.MySQL.ConnectionStatus = mysql.CheckMySQL(app.Config.MySQL.ConnectionString)
+	}
+
+	if settings.PostgresConnectionString != "" {
+		app.Config.Postgres.ConnectionString = settings.PostgresConnectionString
+	} else {
+		app.Config.Postgres.ConnectionString = postgres.GetConnectionString(app.Config)
+	}
+
+	if app.Config.Postgres.ConnectionString != "" {
+		app.Config.Postgres.ConnectionStatus = postgres.CheckPostgreSQL(app.Config.Postgres.ConnectionString)
+	}
+
+}
+
+func fetchGitHubData(envVars app.EnvVars) {
 
 	report := helperReportStart()
 
 	// Get all the repositories of the organization.
-	allRepos, counterRepos, err := internal.FetchGitHubRepos(envVars)
+	allRepos, counterRepos, err := app.FetchGitHubRepos(envVars)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,7 +99,7 @@ func fetchGitHubData(envVars internal.EnvVars) {
 	var counterPulls map[string]int
 
 	if envVars.GitHub.Token != "" {
-
+		log.Printf("Check Latest Updates: Start")
 		// Get the latest Pull Requests updates to download only the new ones. Will download all Pull Requests on the first run.
 		pullsLastUpdate, err := getLatestUpdates(envVars, allRepos)
 		if err != nil {
@@ -62,7 +109,7 @@ func fetchGitHubData(envVars internal.EnvVars) {
 		report.Timer["DBLatestUpdates"] = time.Now().UnixMilli()
 
 		// Get Pull Requests for all repositories.
-		allPulls, counterPulls, err = internal.FetchGitHubPullsByRepos(envVars, allRepos, pullsLastUpdate)
+		allPulls, counterPulls, err = app.FetchGitHubPullsByRepos(envVars, allRepos, pullsLastUpdate)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -82,7 +129,7 @@ func fetchGitHubData(envVars internal.EnvVars) {
 
 }
 
-func filterRepos(envVars internal.EnvVars, allRepos []*github.Repository) []*github.Repository {
+func filterRepos(envVars app.EnvVars, allRepos []*github.Repository) []*github.Repository {
 
 	// Dev Filter
 	var allReposFiltered []*github.Repository
@@ -100,8 +147,8 @@ func filterRepos(envVars internal.EnvVars, allRepos []*github.Repository) []*git
 	return allRepos
 }
 
-func getLatestUpdates(envVars internal.EnvVars, allRepos []*github.Repository) (map[string]*internal.PullsLastUpdate, error) {
-	lastUpdates := make(map[string]*internal.PullsLastUpdate)
+func getLatestUpdates(envVars app.EnvVars, allRepos []*github.Repository) (map[string]*app.PullsLastUpdate, error) {
+	lastUpdates := make(map[string]*app.PullsLastUpdate)
 
 	ctx := context.Background()
 	g, _ := errgroup.WithContext(ctx)
@@ -109,21 +156,21 @@ func getLatestUpdates(envVars internal.EnvVars, allRepos []*github.Repository) (
 	var updatedMySQL, updatedPostgres, updatedMongo map[string]string
 	var errMySQL, errPostgres, errMongo error
 
-	if envVars.MySQL.Host != "" {
+	if envVars.MySQL.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 			updatedMySQL, errMySQL = getLatestUpdatesFromMySQL(envVars)
 			return errMySQL
 		})
 	}
 
-	if envVars.Postgres.Host != "" {
+	if envVars.Postgres.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 			updatedPostgres, errPostgres = getLatestUpdatesFromPostgres(envVars)
 			return errPostgres
 		})
 	}
 
-	if envVars.MongoDB.Host != "" {
+	if envVars.MongoDB.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 			updatedMongo, errMongo = getLatestUpdatesFromMongoDB(envVars)
 			return errMongo
@@ -137,17 +184,25 @@ func getLatestUpdates(envVars internal.EnvVars, allRepos []*github.Repository) (
 	for _, repo := range allRepos {
 		repoName := repo.GetName()
 		if lastUpdates[repoName] == nil {
-			lastUpdates[repoName] = &internal.PullsLastUpdate{}
+			lastUpdates[repoName] = &app.PullsLastUpdate{}
 		}
 
 		if updatedMySQL[repoName] != "" {
 			lastUpdates[repoName].MySQL = updatedMySQL[repoName]
+		} else if envVars.MySQL.ConnectionStatus == "Connected" {
+			lastUpdates[repoName].Force = true
 		}
+
 		if updatedPostgres[repoName] != "" {
 			lastUpdates[repoName].PostgreSQL = updatedPostgres[repoName]
+		} else if envVars.Postgres.ConnectionStatus == "Connected" {
+			lastUpdates[repoName].Force = true
 		}
+
 		if updatedMongo[repoName] != "" {
 			lastUpdates[repoName].MongoDB = updatedMongo[repoName]
+		} else if envVars.MongoDB.ConnectionStatus == "Connected" {
+			lastUpdates[repoName].Force = true
 		}
 
 		lastUpdates[repoName].Minimum = findMinimumDate(
@@ -160,25 +215,25 @@ func getLatestUpdates(envVars internal.EnvVars, allRepos []*github.Repository) (
 	return lastUpdates, nil
 }
 
-func asyncProcessDBs(envVars internal.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) {
+func asyncProcessDBs(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) {
 
 	ctx := context.Background()
 
 	g, _ := errgroup.WithContext(ctx)
 
-	if envVars.MySQL.Host != "" {
+	if envVars.MySQL.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 			return MySQLprocessPulls(envVars, allRepos, allPulls)
 		})
 	}
 
-	if envVars.Postgres.Host != "" {
+	if envVars.Postgres.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 			return PostgreSQLprocessPulls(envVars, allRepos, allPulls)
 		})
 	}
 
-	if envVars.MongoDB.Host != "" {
+	if envVars.MongoDB.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 			return MongoDBprocessPulls(envVars, allRepos, allPulls)
 		})
@@ -190,16 +245,12 @@ func asyncProcessDBs(envVars internal.EnvVars, allRepos []*github.Repository, al
 
 }
 
-func getLatestUpdatesFromMySQL(envVars internal.EnvVars) (map[string]string, error) {
+func getLatestUpdatesFromMySQL(envVars app.EnvVars) (map[string]string, error) {
 	ctx := context.Background()
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-		envVars.MySQL.User, envVars.MySQL.Password, envVars.MySQL.Host, envVars.MySQL.Port, envVars.MySQL.DB)
 
-	log.Printf("Check Pulls Latest Updates: MySQL: Connect to: %s", envVars.MySQL.Host)
-	db, err := sql.Open("mysql", dsn)
+	db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
 	if err != nil {
-		log.Print(err)
-		return nil, err
+		log.Printf("MySQL: Error: message: %s", err)
 	}
 	defer db.Close()
 
@@ -238,18 +289,16 @@ func getLatestUpdatesFromMySQL(envVars internal.EnvVars) (map[string]string, err
 	return lastUpdates, nil
 }
 
-func getLatestUpdatesFromPostgres(envVars internal.EnvVars) (map[string]string, error) {
+func getLatestUpdatesFromPostgres(envVars app.EnvVars) (map[string]string, error) {
 
 	ctx := context.Background()
-	dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s",
-		envVars.Postgres.User, envVars.Postgres.Password, envVars.Postgres.DB, envVars.Postgres.Host, envVars.Postgres.Port)
 
-	log.Printf("Check Pulls Latest Updates: PostgreSQL: Connect to: %s", envVars.Postgres.Host)
-	db, err := sql.Open("postgres", dsn)
+	db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
 	if err != nil {
-		log.Print(err)
+		log.Printf("Check Pulls Latest Updates: PostgreSQL: Error: %s", err)
 	}
 	defer db.Close()
+
 	query := `
 		SELECT
 			repo,
@@ -285,19 +334,16 @@ func getLatestUpdatesFromPostgres(envVars internal.EnvVars) (map[string]string, 
 	return lastUpdates, nil
 }
 
-func getLatestUpdatesFromMongoDB(envVars internal.EnvVars) (map[string]string, error) {
+func getLatestUpdatesFromMongoDB(envVars app.EnvVars) (map[string]string, error) {
 	ctx := context.Background()
 
-	ApplyURI := fmt.Sprintf("mongodb://%s:%s@%s:%s/", envVars.MongoDB.User, envVars.MongoDB.Password, envVars.MongoDB.Host, envVars.MongoDB.Port)
-	log.Printf("Check Pulls Latest Updates: MongoDB: Connect to: %s", envVars.MongoDB.Host)
-	clientOptions := options.Client().ApplyURI(ApplyURI)
-	mongodb, err := mongo.Connect(ctx, clientOptions)
+	client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
 	if err != nil {
-		return nil, err
+		log.Printf("MongoDB: Connect Error: message: %s", err)
 	}
-	defer mongodb.Disconnect(ctx)
+	defer client.Disconnect(ctx)
 
-	db := mongodb.Database(envVars.MongoDB.DB)
+	db := client.Database(envVars.MongoDB.DB)
 	collection := db.Collection("pulls")
 
 	pipeline := mongo.Pipeline{
@@ -343,25 +389,23 @@ func findMinimumDate(dates ...string) string {
 	return minDate
 }
 
-func MySQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
+func MySQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
 
-	report := internal.ReportDatabases{
+	report := app.ReportDatabases{
 		Type:          "GitHub Pulls",
 		DB:            "MySQL",
 		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
 		StartedAtUnix: time.Now().UnixMilli(),
 	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
-		envVars.MySQL.User, envVars.MySQL.Password, envVars.MySQL.Host, envVars.MySQL.Port, envVars.MySQL.DB)
-
-	log.Printf("Databases: MySQL: Start: Connect to: %s", envVars.MySQL.Host)
-
-	db, err := sql.Open("mysql", dsn)
+	db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
 	if err != nil {
+		log.Printf("Databases: MySQL: Error: message: %s", err)
 		return err
 	}
 	defer db.Close()
+
+	log.Printf("Databases: MySQL: Start")
 
 	for _, repo := range allRepos {
 		report.Counter.Repos++
@@ -371,13 +415,13 @@ func MySQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, 
 			return err
 		}
 
-		_, err = db.Exec("INSERT INTO github.repositories (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?", id, repoJSON, repoJSON)
+		_, err = db.Exec("INSERT INTO repositories (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?", id, repoJSON, repoJSON)
 		if err != nil {
 			return err
 		}
-		if envVars.App.Debug {
-			log.Printf("MySQL: Repo %s: Insert repo data", *repo.FullName)
-		}
+		// if envVars.App.Debug {
+		// 	log.Printf("MySQL: Repo %s: Insert repo data", *repo.FullName)
+		// }
 
 		if len(allPulls) > 0 {
 			repoName := *repo.Name
@@ -385,15 +429,15 @@ func MySQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, 
 
 			if !exists || len(pullRequests) == 0 {
 				report.Counter.ReposWithoutPRs++
-				if envVars.App.Debug {
-					log.Printf("MySQL: Repo: %s: PRs: No pull requests found for repository", repoName)
-				}
+				// if envVars.App.Debug {
+				// 	log.Printf("MySQL: Repo: %s: PRs: No pull requests found for repository", repoName)
+				// }
 			} else {
 				report.Counter.ReposWithPRs++
-				for p, pull := range pullRequests {
-					if envVars.App.Debug {
-						log.Printf("MySQL: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
-					}
+				for _, pull := range pullRequests {
+					// if envVars.App.Debug {
+					// 	log.Printf("MySQL: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
+					// }
 					id := pull.ID
 					pullJSON, err := json.Marshal(pull)
 					if err != nil {
@@ -418,9 +462,9 @@ func MySQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, 
 				}
 
 				report.Counter.Pulls += len(pullRequests)
-				if envVars.App.Debug {
-					log.Printf("MySQL: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
-				}
+				// if envVars.App.Debug {
+				// 	log.Printf("MySQL: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
+				// }
 			}
 		}
 	}
@@ -434,7 +478,7 @@ func MySQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, 
 		return err
 	}
 	log.Printf("Databases: MySQL: Finish: Report: %s", reportJSON)
-	_, err = db.Exec("INSERT INTO github.reports_databases (data) VALUES (?)", reportJSON)
+	_, err = db.Exec("INSERT INTO reports_databases (data) VALUES (?)", reportJSON)
 	if err != nil {
 		return err
 	}
@@ -442,25 +486,23 @@ func MySQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, 
 	return nil
 }
 
-func PostgreSQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
+func PostgreSQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
 
-	report := internal.ReportDatabases{
+	report := app.ReportDatabases{
 		Type:          "GitHub Pulls",
 		DB:            "PostgreSQL",
 		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
 		StartedAtUnix: time.Now().UnixMilli(),
 	}
 
-	dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s",
-		envVars.Postgres.User, envVars.Postgres.Password, envVars.Postgres.DB, envVars.Postgres.Host, envVars.Postgres.Port)
-
-	log.Printf("Databases: PostgreSQL: Start: Connect to: %s", envVars.Postgres.Host)
-
-	db, err := sql.Open("postgres", dsn)
+	db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
 	if err != nil {
+		log.Printf("Databases: PostgreSQL: Start: Error: %s", err)
 		return err
 	}
 	defer db.Close()
+
+	log.Printf("Databases: PostgreSQL: Start")
 
 	for _, repo := range allRepos {
 
@@ -475,26 +517,26 @@ func PostgreSQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Reposit
 		if err != nil {
 			return err
 		}
-		if envVars.App.Debug {
-			log.Printf("Postgres: Repo %s: Insert repo data", *repo.FullName)
-		}
-
-		repoName := *repo.Name
-		pullRequests, exists := allPulls[repoName]
+		// if envVars.App.Debug {
+		// 	log.Printf("Postgres: Repo %s: Insert repo data", *repo.FullName)
+		// }
 
 		if len(allPulls) > 0 {
+			repoName := *repo.Name
+			pullRequests, exists := allPulls[repoName]
+
 			if !exists || len(pullRequests) == 0 {
 				report.Counter.ReposWithoutPRs++
-				if envVars.App.Debug {
-					log.Printf("Postgres: Repo: %s: PRs: No pull requests found for repository", repoName)
-				}
+				// if envVars.App.Debug {
+				// 	log.Printf("Postgres: Repo: %s: PRs: No pull requests found for repository", repoName)
+				// }
 			} else {
 				report.Counter.ReposWithPRs++
-				for p, pull := range pullRequests {
+				for _, pull := range pullRequests {
 
-					if envVars.App.Debug {
-						log.Printf("Postgres: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
-					}
+					// if envVars.App.Debug {
+					// 	log.Printf("Postgres: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
+					// }
 					id := pull.ID
 					pullJSON, err := json.Marshal(pull)
 					if err != nil {
@@ -521,13 +563,13 @@ func PostgreSQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Reposit
 				}
 
 				report.Counter.Pulls += len(pullRequests)
-				if envVars.App.Debug {
-					log.Printf("Postgres: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
-				}
+				// if envVars.App.Debug {
+				// 	log.Printf("Postgres: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
+				// }
 			}
 		}
 	}
-
+	log.Printf("PG: Report: %v", report.Counter.PullsInserted)
 	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
 	report.FinishedAtUnix = time.Now().UnixMilli()
 	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
@@ -544,9 +586,9 @@ func PostgreSQLprocessPulls(envVars internal.EnvVars, allRepos []*github.Reposit
 	return nil
 }
 
-func MongoDBprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
+func MongoDBprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
 
-	report := internal.ReportDatabases{
+	report := app.ReportDatabases{
 		Type:          "GitHub Pulls",
 		DB:            "MongoDB",
 		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
@@ -554,17 +596,17 @@ func MongoDBprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository
 	}
 
 	ctx := context.Background()
-	ApplyURI := fmt.Sprintf("mongodb://%s:%s@%s:%s/", envVars.MongoDB.User, envVars.MongoDB.Password, envVars.MongoDB.Host, envVars.MongoDB.Port)
-	log.Printf("Databases: MongoDB: Start: Connect to: %s", envVars.MongoDB.Host)
-	clientOptions := options.Client().ApplyURI(ApplyURI)
-	mongodb, err := mongo.Connect(ctx, clientOptions)
+
+	client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
 	if err != nil {
+		log.Printf("MongoDB: Connect Error: message: %s", err)
 		return err
 	}
-	defer mongodb.Disconnect(ctx)
+	defer client.Disconnect(ctx)
 
-	db := mongodb.Database(envVars.MongoDB.DB)
+	log.Printf("Databases: MongoDB: Start")
 
+	db := client.Database(envVars.MongoDB.DB)
 	dbCollectionRepos := db.Collection("repositories")
 
 	// Creating a collection of pulls
@@ -594,9 +636,9 @@ func MongoDBprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository
 		if err != nil {
 			return err
 		}
-		if envVars.App.Debug {
-			log.Printf("MongoDB: Repo %s: Insert repo data", *repo.FullName)
-		}
+		// if envVars.App.Debug {
+		// 	log.Printf("MongoDB: Repo %s: Insert repo data", *repo.FullName)
+		// }
 		if len(allPulls) > 0 {
 			dbCollectionPulls := db.Collection("pulls")
 			repoName := *repo.Name
@@ -604,19 +646,19 @@ func MongoDBprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository
 
 			if !exists || len(pullRequests) == 0 {
 				report.Counter.ReposWithoutPRs++
-				if envVars.App.Debug {
-					log.Printf("MongoDB: Repo: %s: PRs: No pull requests found for repository", repoName)
-				}
+				// if envVars.App.Debug {
+				// 	log.Printf("MongoDB: Repo: %s: PRs: No pull requests found for repository", repoName)
+				// }
 			} else {
 				report.Counter.ReposWithPRs++
-				for p, pull := range pullRequests {
+				for _, pull := range pullRequests {
 
 					filter := bson.M{"id": pull.ID, "repo": repoName}
 					update := bson.M{"$set": pull}
 
-					if envVars.App.Debug {
-						log.Printf("MongoDB: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
-					}
+					// if envVars.App.Debug {
+					// 	log.Printf("MongoDB: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
+					// }
 
 					res, err := dbCollectionPulls.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
 					if err != nil {
@@ -630,9 +672,9 @@ func MongoDBprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository
 				}
 
 				report.Counter.Pulls += len(pullRequests)
-				if envVars.App.Debug {
-					log.Printf("MongoDB: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
-				}
+				// if envVars.App.Debug {
+				// 	log.Printf("MongoDB: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
+				// }
 			}
 		}
 	}
@@ -655,26 +697,15 @@ func MongoDBprocessPulls(envVars internal.EnvVars, allRepos []*github.Repository
 	return nil
 }
 
-func getConfig() internal.EnvVars {
-	log.Print("App: Read config")
-
-	envVars, err := internal.GetEnvVars()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	return envVars
-}
-
-func helperSleep(envVars internal.EnvVars) {
+func helperSleep(envVars app.EnvVars) {
 	minutes := time.Duration(envVars.App.DelayMinutes) * time.Minute
 	log.Printf("App: The repeat run will start automatically after %v", minutes)
 	time.Sleep(minutes)
 }
 
-func helperReportStart() internal.Report {
+func helperReportStart() app.Report {
 
-	report := internal.Report{
+	report := app.Report{
 		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
 		StartedAtUnix: time.Now().UnixMilli(),
 	}
@@ -684,7 +715,7 @@ func helperReportStart() internal.Report {
 	return report
 }
 
-func helperReportFinish(envVars internal.EnvVars, report internal.Report, counterPulls map[string]int, counterRepos int) {
+func helperReportFinish(envVars app.EnvVars, report app.Report, counterPulls map[string]int, counterRepos int) {
 
 	report.Timer["ApiReposTime"] = report.Timer["ApiRepos"] - report.StartedAtUnix
 
@@ -704,28 +735,26 @@ func helperReportFinish(envVars internal.EnvVars, report internal.Report, counte
 	report.Counter = counterPulls
 	report.Counter["repos_api_requests"] = counterRepos
 	report.Databases = make(map[string]bool)
-	report.Databases["MySQL"] = envVars.MySQL.Host != ""
-	report.Databases["Postgres"] = envVars.Postgres.Host != ""
-	report.Databases["MongoDB"] = envVars.MongoDB.Host != ""
+	report.Databases["MySQL"] = envVars.MySQL.ConnectionStatus != ""
+	report.Databases["Postgres"] = envVars.Postgres.ConnectionStatus != ""
+	report.Databases["MongoDB"] = envVars.MongoDB.ConnectionStatus != ""
 
 	reportJSON, _ := json.Marshal(report)
 
 	ctx := context.Background()
 	g, _ := errgroup.WithContext(ctx)
 
-	if envVars.MySQL.Host != "" {
+	if envVars.MySQL.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 
-			dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
-				envVars.MySQL.User, envVars.MySQL.Password, envVars.MySQL.Host, envVars.MySQL.Port, envVars.MySQL.DB)
-
-			db, err := sql.Open("mysql", dsn)
+			db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
 			if err != nil {
+				log.Printf("Databases: MySQL: Error: message: %s", err)
 				return err
 			}
 			defer db.Close()
 
-			_, err = db.Exec("INSERT INTO github.reports_runs (data) VALUES (?)", reportJSON)
+			_, err = db.Exec("INSERT INTO reports_runs (data) VALUES (?)", reportJSON)
 			if err != nil {
 				return err
 			}
@@ -734,12 +763,11 @@ func helperReportFinish(envVars internal.EnvVars, report internal.Report, counte
 		})
 	}
 
-	if envVars.Postgres.Host != "" {
+	if envVars.Postgres.ConnectionStatus == "Connected" {
 		g.Go(func() error {
-			dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s",
-				envVars.Postgres.User, envVars.Postgres.Password, envVars.Postgres.DB, envVars.Postgres.Host, envVars.Postgres.Port)
-			db, err := sql.Open("postgres", dsn)
+			db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
 			if err != nil {
+				log.Printf("Databases: PostgreSQL: Start: Error: %s", err)
 				return err
 			}
 			defer db.Close()
@@ -753,19 +781,18 @@ func helperReportFinish(envVars internal.EnvVars, report internal.Report, counte
 		})
 	}
 
-	if envVars.MongoDB.Host != "" {
+	if envVars.MongoDB.ConnectionStatus == "Connected" {
 		g.Go(func() error {
 
 			ctx := context.Background()
-			ApplyURI := fmt.Sprintf("mongodb://%s:%s@%s:%s/", envVars.MongoDB.User, envVars.MongoDB.Password, envVars.MongoDB.Host, envVars.MongoDB.Port)
-			clientOptions := options.Client().ApplyURI(ApplyURI)
-			mongodb, err := mongo.Connect(ctx, clientOptions)
+			client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
 			if err != nil {
+				log.Printf("MongoDB: Connect Error: message: %s", err)
 				return err
 			}
-			defer mongodb.Disconnect(ctx)
+			defer client.Disconnect(ctx)
 
-			db := mongodb.Database(envVars.MongoDB.DB)
+			db := client.Database(envVars.MongoDB.DB)
 
 			dbCollectionReport := db.Collection("reports_runs")
 			_, err = dbCollectionReport.InsertOne(ctx, report)

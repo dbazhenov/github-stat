@@ -20,13 +20,10 @@ type Load struct {
 
 type Connections struct {
 	MySQLConnectionString    string `json:"mysql_connection_string"`
-	MySQLConnect             bool   `json:"mysql_enable"`
 	MySQLStatus              string `json:"mysql_status"`
 	PostgresConnectionString string `json:"postgres_connection_string"`
-	PostgresConnect          bool   `json:"postgres_enable"`
 	PostgresStatus           string `json:"postgres_status"`
 	MongoDBConnectionString  string `json:"mongodb_connection_string"`
-	MongoDBConnect           bool   `json:"mongodb_enable"`
 	MongoDBStatus            string `json:"mongodb_status"`
 }
 

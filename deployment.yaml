@@ -53,3 +53,10 @@ spec:
             name: github-app-config
         - secretRef:
             name: github-app-secret
+        env:
+        - name: LOAD_MYSQL
+          value: "true"
+        - name: LOAD_POSTGRES
+          value: "false"
+        - name: LOAD_MONGODB
+          value: "false"

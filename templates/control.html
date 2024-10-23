@@ -6,29 +6,29 @@
     <div class="col-12">
       <h3>MySQL</h3>
       <div class="form-group mt-3">
-        <label for="mysqlConnectionsRange">Load</label>
-        <input type="range" class="form-control-range w-100" id="mysqlConnectionsRange" min="0" max="10" value="{{.LoadConfig.MySQLConnections}}">
+        <label for="mysqlConnectionsRange">Parallel connections to the database</label>
+        <input type="range" class="form-control-range w-100" id="mysqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.MySQLConnections}}">
         <span id="mysqlConnectionsValue">{{.LoadConfig.MySQLConnections}}</span>
       </div>
       <div class="row">
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch1" role="switch" {{if .LoadConfig.MySQLSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="mysqlSwitch1">Good Switch 1</label>
+            <label class="form-check-label" for="mysqlSwitch1">Select (300 rows)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch2" role="switch" {{if .LoadConfig.MySQLSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="mysqlSwitch2">Good Switch  2</label>
+            <label class="form-check-label" for="mysqlSwitch2">Select and Insert (40k rows)</label>
           </div>
         </div>
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch3" role="switch" {{if .LoadConfig.MySQLSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mysqlSwitch3">Bad Switch 1</label>
+            <label class="form-check-label" for="mysqlSwitch3">Bad Switch (Select with RAND in SQL)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch4" role="switch" {{if .LoadConfig.MySQLSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mysqlSwitch4">Bad Switch 2</label>
+            <label class="form-check-label" for="mysqlSwitch4">Bad Switch (SELECT by date field in JSON)</label>
           </div>
         </div>
       </div>
@@ -40,29 +40,29 @@
     <div class="col-12">
       <h3>PostgreSQL</h3>
       <div class="form-group mt-3">
-        <label for="postgresqlConnectionsRange">Load</label>
-        <input type="range" class="form-control-range w-100" id="postgresqlConnectionsRange" min="0" max="10" value="{{.LoadConfig.PostgreSQLConnections}}">
+        <label for="postgresqlConnectionsRange">Parallel connections to the database</label>
+        <input type="range" class="form-control-range w-100" id="postgresqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.PostgreSQLConnections}}">
         <span id="postgresqlConnectionsValue">{{.LoadConfig.PostgreSQLConnections}}</span>
       </div>
       <div class="row">
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch1" role="switch" {{if .LoadConfig.PostgresSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="postgresSwitch1">Good Switch 1</label>
+            <label class="form-check-label" for="postgresSwitch1">Select (Repositories)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch2" role="switch" {{if .LoadConfig.PostgresSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="postgresSwitch2">Good Switch 2</label>
+            <label class="form-check-label" for="postgresSwitch2">Select and Insert (Pulls)</label>
           </div>
         </div>
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch3" role="switch" {{if .LoadConfig.PostgresSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="postgresSwitch3">Bad Switch 1</label>
+            <label class="form-check-label" for="postgresSwitch3">Bad Switch (Select with RAND in SQL)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch4" role="switch" {{if .LoadConfig.PostgresSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="postgresSwitch4">Bad Switch 2</label>
+            <label class="form-check-label" for="postgresSwitch4">Bad Switch (SELECT by date field in JSON)</label>
           </div>
         </div>
       </div>
@@ -74,29 +74,29 @@
     <div class="col-12">
       <h3>MongoDB</h3>
       <div class="form-group mt-3">
-        <label for="mongodbConnectionsRange">Load</label>
-        <input type="range" class="form-control-range w-100" id="mongodbConnectionsRange" min="0" max="10" value="{{.LoadConfig.MongoDBConnections}}">
+        <label for="mongodbConnectionsRange">Parallel connections to the database</label>
+        <input type="range" class="form-control-range w-100" id="mongodbConnectionsRange" min="0" max="100" value="{{.LoadConfig.MongoDBConnections}}">
         <span id="mongodbConnectionsValue">{{.LoadConfig.MongoDBConnections}}</span>
       </div>
       <div class="row">
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mongodbSwitch1" role="switch" {{if .LoadConfig.MongoDBSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="mongodbSwitch1">Good Switch 1</label>
+            <label class="form-check-label" for="mongodbSwitch1">Select and Insert repositories</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mongodbSwitch2" role="switch" {{if .LoadConfig.MongoDBSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="mongodbSwitch2">Good Switch 2</label>
+            <label class="form-check-label" for="mongodbSwitch2">Select and Insert pulls</label>
           </div>
         </div>
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mongodbSwitch3" role="switch" {{if .LoadConfig.MongoDBSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mongodbSwitch3">Bad Switch 1</label>
+            <label class="form-check-label" for="mongodbSwitch3">Insert Many pulls & repos)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mongodbSwitch4" role="switch" {{if .LoadConfig.MongoDBSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mongodbSwitch4">Bad Switch 1</label>
+            <label class="form-check-label" for="mongodbSwitch4">Filter by date and stars</label>
           </div>
         </div>
       </div>
