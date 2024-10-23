@@ -11,10 +11,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy the source code into the container
-COPY cmd/dataset /app/cmd/dataset
+COPY . .
 
 # Build the application
-RUN go build -o main ./cmd/dataset
+RUN go build -o main ./cmd/dataset/main.go
 
 # Specify the command to run the application
 CMD ["./main"]
