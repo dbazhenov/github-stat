@@ -9,18 +9,25 @@ import (
 )
 
 type EnvVars struct {
-	MySQL        ConfigMySQL
-	MongoDB      ConfigMongoDB
-	GitHub       ConfigGitHub
-	Postgres     ConfigPostgres
-	Valkey       ConfigValkey
-	ControlPanel ConfigControlPanel
-	App          ConfigApp
+	MySQL         ConfigMySQL
+	MongoDB       ConfigMongoDB
+	GitHub        ConfigGitHub
+	Postgres      ConfigPostgres
+	Valkey        ConfigValkey
+	ControlPanel  ConfigControlPanel
+	App           ConfigApp
+	LoadGenerator ConfigLoad
 }
 
 type ConfigApp struct {
 	DelayMinutes int
 	Debug        bool
+}
+
+type ConfigLoad struct {
+	MySQL    bool
+	Postgres bool
+	MongoDB  bool
 }
 
 type ConfigControlPanel struct {
@@ -40,6 +47,7 @@ type ConfigMySQL struct {
 	Host             string
 	Port             string
 	ConnectionString string
+	ConnectionStatus string
 }
 
 type ConfigMongoDB struct {
@@ -49,6 +57,7 @@ type ConfigMongoDB struct {
 	Host             string
 	Port             string
 	ConnectionString string
+	ConnectionStatus string
 }
 
 type ConfigPostgres struct {
@@ -58,6 +67,7 @@ type ConfigPostgres struct {
 	Host             string
 	Port             string
 	ConnectionString string
+	ConnectionStatus string
 }
 
 type ConfigValkey struct {
@@ -73,7 +83,7 @@ func GetEnvVars() (EnvVars, error) {
 
 	var envVars EnvVars
 
-	err := godotenv.Load()
+	err := godotenv.Overload()
 	if err != nil {
 		return EnvVars{}, err
 	}
@@ -106,32 +116,44 @@ func GetEnvVars() (EnvVars, error) {
 	envVars.Valkey.Port = os.Getenv("VALKEY_PORT")
 	envVars.Valkey.Password = os.Getenv("VALKEY_PASSWORD")
 
+	envVars.Valkey.DB, _ = parseInt("VALKEY_DB")
+
+	envVars.App.Debug, _ = parseBool("DEBUG")
+
+	envVars.LoadGenerator.MySQL, _ = parseBool("LOAD_MYSQL")
+	envVars.LoadGenerator.Postgres, _ = parseBool("LOAD_POSTGRES")
+	envVars.LoadGenerator.MongoDB, _ = parseBool("LOAD_MONGODB")
+
 	envVars.ControlPanel.Host = os.Getenv("CONTROL_PANEL_HOST")
 	envVars.ControlPanel.Port = os.Getenv("CONTROL_PANEL_PORT")
 
-	stringValketDB := os.Getenv("VALKEY_DB")
-	valkeyDBint, err := strconv.Atoi(stringValketDB)
-	if err != nil {
-		log.Fatalf("Error converting VALKEY_DB to int: %v", err)
-	}
-	envVars.Valkey.DB = valkeyDBint
-
-	debugStr := os.Getenv("DEBUG")
-	debug, err := strconv.ParseBool(debugStr)
-	if err != nil {
-		log.Fatalf("Error converting DEBUG to bool: %v", err)
-	}
-
-	envVars.App.Debug = debug
-
-	delayString := os.Getenv("DELAY_MINUTES")
-	delayInt, err := strconv.Atoi(delayString)
-	if err != nil {
-		log.Fatalf("Error converting DELAY_MINUTES to int: %v", err)
-	}
-	envVars.App.DelayMinutes = delayInt
+	envVars.App.DelayMinutes, _ = parseInt("DELAY_MINUTES")
 
 	return envVars, nil
+}
+
+func parseInt(key string) (int, error) {
+
+	result_string := os.Getenv(key)
+	result, err := strconv.Atoi(result_string)
+	if err != nil {
+		log.Printf("Error converting %s to int: %v", key, err)
+		return 0, err
+	}
+
+	return result, nil
+}
+
+func parseBool(key string) (bool, error) {
+
+	result_string := os.Getenv(key)
+	result, err := strconv.ParseBool(result_string)
+	if err != nil {
+		log.Printf("Error converting %s to int: %v", key, err)
+		return false, err
+	}
+
+	return result, nil
 }
 
 func GetConfig() EnvVars {

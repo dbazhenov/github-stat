@@ -1,15 +1,19 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
-
-	app "github-stat/internal"
+	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/go-github/github"
+
+	app "github-stat/internal"
 )
 
 func Connect(envVars app.EnvVars) (*sql.DB, error) {
@@ -27,19 +31,46 @@ func Connect(envVars app.EnvVars) (*sql.DB, error) {
 	return db, nil
 }
 
+func ConnectByString(connection_string string) (*sql.DB, error) {
+
+	db, err := sql.Open("mysql", connection_string)
+	if err != nil {
+		log.Printf("MySQL Error: %s", err)
+		return nil, err
+	}
+
+	return db, nil
+}
+
 func CheckMySQL(connectionString string) string {
 	db, err := sql.Open("mysql", connectionString)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return fmt.Sprintf("Error opening connection: %v", err)
 	}
 	defer db.Close()
 
-	err = db.Ping()
+	// Using a context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err = db.PingContext(ctx)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return "Error: Connection timeout exceeded"
+		}
+		return fmt.Sprintf("Error checking connection: %v", err)
 	}
 
 	return "Connected"
+}
+
+func GetConnectionString(envVars app.EnvVars) string {
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
+		app.Config.MySQL.User,
+		app.Config.MySQL.Password,
+		app.Config.MySQL.Host,
+		app.Config.MySQL.Port,
+		app.Config.MySQL.DB)
 }
 
 func SelectInt(db *sql.DB, query string) (int, error) {
@@ -168,4 +199,101 @@ func DropTable(db *sql.DB, name string) (string, error) {
 	}
 
 	return fmt.Sprintf("Table '%s' dropped successfully or did not exist.", name), nil
+}
+
+func InitDB(connection_string string) error {
+	newDBName, err := getDbName(connection_string)
+	if err != nil {
+		log.Printf("getDbName: Error: %v\n", err)
+		return err
+	} else {
+		log.Printf("getDbName: New Database name: %s", newDBName)
+	}
+
+	connectMysqlDbString := strings.Replace(connection_string, fmt.Sprintf("/%s", newDBName), "/", 1)
+	log.Printf("InitDB: Connect String to MySQL DB: %s", connectMysqlDbString)
+	mainDB, err := ConnectByString(connectMysqlDbString)
+	if err != nil {
+		log.Printf("InitDB: Connect to Main DB: Error: %s", newDBName)
+		return err
+	}
+	defer mainDB.Close()
+
+	dbExists, err := databaseExists(mainDB, newDBName)
+	if err != nil {
+		log.Printf("Error checking if database exists: %v", err)
+		return err
+	}
+	if !dbExists {
+		log.Printf("Database %s does not exist, creating database", newDBName)
+		err := executeSQL(mainDB, fmt.Sprintf("CREATE DATABASE %s;", newDBName))
+		if err != nil {
+			log.Printf("Error creating database %s: %v", newDBName, err)
+			return err
+		}
+	}
+
+	newDB, err := ConnectByString(connection_string)
+	if err != nil {
+		log.Printf("InitDB: Connect to New DB: Error: %s", newDBName)
+		return err
+	}
+	defer newDB.Close()
+
+	log.Printf("Creating tables in database %s", newDBName)
+
+	schemaSQLs := []string{
+		"CREATE TABLE IF NOT EXISTS repositories (id INT AUTO_INCREMENT PRIMARY KEY, data JSON);",
+		"CREATE TABLE IF NOT EXISTS pulls (id INT NOT NULL, repo VARCHAR(255) NOT NULL, data JSON, PRIMARY KEY (id, repo));",
+		"CREATE TABLE IF NOT EXISTS pullsTest (id INT NOT NULL, repo VARCHAR(255) NOT NULL, data JSON, PRIMARY KEY (id, repo));",
+		"CREATE TABLE IF NOT EXISTS reports_runs (id INT AUTO_INCREMENT PRIMARY KEY, data JSON);",
+		"CREATE TABLE IF NOT EXISTS reports_databases (id INT AUTO_INCREMENT PRIMARY KEY, data JSON);",
+	}
+
+	for _, query := range schemaSQLs {
+		log.Printf("Executing query: %s", query)
+		if err := executeSQL(newDB, query); err != nil {
+			log.Printf("Error executing query %s: %v", query, err)
+			// Drop the database if there is an error
+			dropErr := executeSQL(mainDB, fmt.Sprintf("DROP DATABASE IF EXISTS %s;", newDBName))
+			if dropErr != nil {
+				log.Printf("Error dropping database %s: %v", newDBName, dropErr)
+			} else {
+				log.Printf("Database %s dropped due to query error", newDBName)
+			}
+			return err
+		}
+	}
+
+	return nil
+}
+
+func getDbName(connStr string) (string, error) {
+	parts := strings.Split(connStr, "/")
+	if len(parts) < 2 {
+		return "", errors.New("database name not found in connection string")
+	}
+	dbParams := strings.Split(parts[1], "?")
+	if len(dbParams) == 0 {
+		return "", errors.New("database name not found in connection string")
+	}
+	return dbParams[0], nil
+}
+
+func databaseExists(db *sql.DB, dbName string) (bool, error) {
+	var exists bool
+	query := fmt.Sprintf("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '%s';", dbName)
+	err := db.QueryRow(query).Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func executeSQL(db *sql.DB, query string) error {
+	_, err := db.Exec(query)
+	return err
 }

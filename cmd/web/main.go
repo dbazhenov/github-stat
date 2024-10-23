@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	app "github-stat/internal"
@@ -24,7 +25,7 @@ var LoadConfig = app.Load{
 	PostgreSQLConnections: 0,
 	MongoDBConnections:    0,
 	MySQLSwitch1:          false,
-	PostgresSwitch1:       true,
+	PostgresSwitch1:       false,
 	MongoDBSwitch1:        false,
 }
 
@@ -51,32 +52,38 @@ func initConfig() {
 	valkey.InitValkey(app.Config)
 
 	// Getting settings from Valkey
-	loadConfigFromValkey, err := valkey.LoadConfigFromValkey()
+	loadConfigFromValkey, err := valkey.LoadControlPanelConfigFromValkey()
 	if err != nil {
 		log.Print("Valkey: Load Config Empty")
 	} else {
 		LoadConfig = loadConfigFromValkey
-		log.Printf("Valkey: Load Config: %v", LoadConfig)
+		log.Printf("Valkey: Load Control Panel Settings: %v", LoadConfig)
 	}
+
+	getDBConnectSettings()
 
 }
 
 func handleRequest() {
 
-	// http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("./assets/"))))
 	http.HandleFunc("/", index)
 	http.HandleFunc("/config", config)
 	http.HandleFunc("/start", start)
 	http.HandleFunc("/settings", settings)
 	http.HandleFunc("/dataset", dataset)
-	host := fmt.Sprintf("%s:%s", app.Config.ControlPanel.Host, app.Config.ControlPanel.Port)
-	fmt.Printf("\nYou can open the control panel in your browser at http://%s\n\n", host)
-	http.ListenAndServe(host, nil)
+
+	port := app.Config.ControlPanel.Port
+	if port == "" {
+		port = "8080" // standard port, if not specified
+	}
+
+	fmt.Printf("\nYou can open the control panel in your browser at http://localhost:%s\n\n", port)
+	http.ListenAndServe(":"+port, nil)
 
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Index start LoadConfig: %v", LoadConfig)
+
 	t, err := template.ParseFiles("templates/index.html",
 		"templates/header.html",
 		"templates/footer.html",
@@ -92,51 +99,59 @@ func index(w http.ResponseWriter, r *http.Request) {
 	t.ExecuteTemplate(w, "index", data)
 }
 
+func getDBConnectSettings() {
+
+	settings, err := valkey.LoadFromValkey("db_connections")
+	if err != nil {
+		log.Printf("Error: Valkey: Get connections to databases: %s", err)
+	} else {
+		log.Printf("Valkey: Сonnections to databases: Ok")
+	}
+
+	if settings.MongoDBConnectionString != "" {
+		app.Config.MongoDB.ConnectionString = settings.MongoDBConnectionString
+	} else {
+		app.Config.MongoDB.ConnectionString = mongodb.GetConnectionString(app.Config)
+	}
+
+	if app.Config.MongoDB.ConnectionString != "" {
+		app.Config.MongoDB.ConnectionStatus = mongodb.CheckMongoDB(app.Config.MongoDB.ConnectionString)
+	}
+
+	if settings.MySQLConnectionString != "" {
+		app.Config.MySQL.ConnectionString = settings.MySQLConnectionString
+	} else {
+		app.Config.MySQL.ConnectionString = mysql.GetConnectionString(app.Config)
+	}
+
+	if app.Config.MySQL.ConnectionString != "" {
+		app.Config.MySQL.ConnectionStatus = mysql.CheckMySQL(app.Config.MySQL.ConnectionString)
+	}
+
+	if settings.PostgresConnectionString != "" {
+		app.Config.Postgres.ConnectionString = settings.PostgresConnectionString
+	} else {
+		app.Config.Postgres.ConnectionString = postgres.GetConnectionString(app.Config)
+	}
+
+	if app.Config.Postgres.ConnectionString != "" {
+		app.Config.Postgres.ConnectionStatus = postgres.CheckPostgreSQL(app.Config.Postgres.ConnectionString)
+	}
+
+}
+
 func prepareIndexData() app.IndexData {
 
 	var Settings app.Connections
 
-	loadConnectionsSettings, err := valkey.LoadFromValkey("db_connections")
-	if err != nil {
-		log.Printf("Valkey: Load Connections: Empty: %s", err)
-	} else {
-		log.Printf("Valkey: Load Connections: Load Config: %v", loadConnectionsSettings)
-	}
+	Settings.MongoDBConnectionString = app.Config.MongoDB.ConnectionString
+	Settings.MongoDBStatus = app.Config.MongoDB.ConnectionStatus
 
-	if loadConnectionsSettings.MongoDBConnectionString != "" {
-		Settings.MongoDBConnectionString = loadConnectionsSettings.MongoDBConnectionString
-	} else {
-		Settings.MongoDBConnectionString = fmt.Sprintf("mongodb://%s:%s@%s:%s/",
-			app.Config.MongoDB.User,
-			app.Config.MongoDB.Password,
-			app.Config.MongoDB.Host,
-			app.Config.MongoDB.Port)
-	}
+	Settings.MySQLConnectionString = app.Config.MySQL.ConnectionString
+	Settings.MySQLStatus = app.Config.MySQL.ConnectionStatus
 
-	if loadConnectionsSettings.MySQLConnectionString != "" {
-		Settings.MySQLConnectionString = loadConnectionsSettings.MySQLConnectionString
-	} else {
-		Settings.MySQLConnectionString = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
-			app.Config.MySQL.User,
-			app.Config.MySQL.Password,
-			app.Config.MySQL.Host,
-			app.Config.MySQL.Port,
-			app.Config.MySQL.DB)
-	}
-	if loadConnectionsSettings.PostgresConnectionString != "" {
-		Settings.PostgresConnectionString = loadConnectionsSettings.PostgresConnectionString
-	} else {
-		Settings.PostgresConnectionString = fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s sslmode=disable",
-			app.Config.Postgres.User,
-			app.Config.Postgres.Password,
-			app.Config.Postgres.DB,
-			app.Config.Postgres.Host,
-			app.Config.Postgres.Port)
-	}
-
-	Settings.MySQLStatus = mysql.CheckMySQL(Settings.MySQLConnectionString)
-	Settings.MongoDBStatus = mongodb.CheckMongoDB(Settings.MongoDBConnectionString)
-	Settings.PostgresStatus = postgres.CheckPostgreSQL(Settings.PostgresConnectionString)
+	Settings.PostgresConnectionString = app.Config.Postgres.ConnectionString
+	Settings.PostgresStatus = app.Config.Postgres.ConnectionStatus
 
 	data := app.IndexData{
 		LoadConfig: LoadConfig,
@@ -161,7 +176,7 @@ func config(w http.ResponseWriter, r *http.Request) {
 
 		err = valkey.SaveConfigToValkey(load)
 		if err != nil {
-			log.Printf("Valkey: Save Config: Error: %s", err)
+			log.Printf("Error: Valkey: Save Config: %s", err)
 		} else {
 			log.Printf("Valkey: Save Config: Success: %v", load)
 		}
@@ -179,9 +194,9 @@ func config(w http.ResponseWriter, r *http.Request) {
 func start(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 
-		LoadConfig, err := valkey.LoadConfigFromValkey()
+		LoadConfig, err := valkey.LoadControlPanelConfigFromValkey()
 		if err != nil {
-			log.Printf("Valkey: Load Config Error: %s", err)
+			log.Printf("Error: Valkey: Start: Get connections to databases: %s", err)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -198,31 +213,79 @@ func settings(w http.ResponseWriter, r *http.Request) {
 		mongodbConnectionString := r.FormValue("mongodbConnectionString")
 		postgresqlConnectionString := r.FormValue("postgresqlConnectionString")
 
-		mysqlStatus := mysql.CheckMySQL(mysqlConnectionString)
+		create_db_mysql := r.FormValue("create_db_mysql")
+		create_db_postgres := r.FormValue("create_db_postgres")
 
 		valkeySettings := app.Connections{}
 
+		mysqlStatus := mysql.CheckMySQL(mysqlConnectionString)
+		mysqlCreateSchema := false
 		if mysqlStatus == "Connected" {
 			valkeySettings.MySQLConnectionString = mysqlConnectionString
+			app.Config.MySQL.ConnectionString = mysqlConnectionString
+		} else if strings.Contains(mysqlStatus, "Unknown database") {
+
+			if create_db_mysql != "" {
+				err := mysql.InitDB(mysqlConnectionString)
+				if err != nil {
+					mysqlStatus = fmt.Sprintf("Error: MySQL Database creation error: %v", err)
+					mysqlCreateSchema = true
+				} else {
+
+					mysqlStatus = mysql.CheckMySQL(mysqlConnectionString)
+					if mysqlStatus == "Connected" {
+						mysqlStatus = "The database and schema have been created. Connection is successful."
+						valkeySettings.MySQLConnectionString = mysqlConnectionString
+						app.Config.MySQL.ConnectionString = mysqlConnectionString
+					}
+				}
+			} else {
+				mysqlStatus = "Need to create a database and schema. Click the Create MySQL Database button."
+				mysqlCreateSchema = true
+			}
 		}
+		valkeySettings.MySQLStatus = mysqlStatus
 
 		mongodbStatus := mongodb.CheckMongoDB(mongodbConnectionString)
-
 		if mongodbStatus == "Connected" {
 			valkeySettings.MongoDBConnectionString = mongodbConnectionString
+			app.Config.MongoDB.ConnectionString = mongodbConnectionString
 		}
+		valkeySettings.MongoDBStatus = mongodbStatus
 
 		postgresqlStatus := postgres.CheckPostgreSQL(postgresqlConnectionString)
-
+		postgresCreateSchema := false
 		if postgresqlStatus == "Connected" {
 			valkeySettings.PostgresConnectionString = postgresqlConnectionString
+			app.Config.Postgres.ConnectionString = postgresqlConnectionString
+		} else if strings.Contains(postgresqlStatus, "does not exist") {
+
+			if create_db_postgres != "" {
+				err := postgres.InitDB(postgresqlConnectionString)
+				if err != nil {
+					postgresqlStatus = fmt.Sprintf("Error: Postgres Database creation error: %v", err)
+					postgresCreateSchema = true
+				} else {
+
+					postgresqlStatus = postgres.CheckPostgreSQL(postgresqlConnectionString)
+					if postgresqlStatus == "Connected" {
+						postgresqlStatus = "The database and schema have been created. Connection is successful."
+						valkeySettings.PostgresConnectionString = postgresqlConnectionString
+						app.Config.Postgres.ConnectionString = postgresqlConnectionString
+					}
+				}
+			} else {
+				postgresqlStatus = "Need to create a database and schema. Click the Create Postgres Database button."
+				postgresCreateSchema = true
+			}
 		}
+		valkeySettings.PostgresStatus = postgresqlStatus
 
 		err := valkey.SaveToValkey("db_connections", valkeySettings)
 		if err != nil {
-			log.Printf("Valkey: Settings: Save Connections: Error: %s", err)
+			log.Printf("Error: Valkey: Settings: Save Connections: %s", err)
 		} else {
-			log.Printf("Valkey: Settings: Save Connections: Success: %v", valkeySettings)
+			log.Printf("Valkey: Settings: Save Connections: Success")
 		}
 
 		data := map[string]interface{}{
@@ -231,16 +294,21 @@ func settings(w http.ResponseWriter, r *http.Request) {
 			"postgres_status": postgresqlStatus,
 		}
 
-		log.Printf("Form: %v", data)
+		if postgresCreateSchema {
+			data["postgres_create_schema"] = postgresCreateSchema
+		}
+		if mysqlCreateSchema {
+			data["mysql_create_schema"] = mysqlCreateSchema
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(data)
 	} else {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 	}
 }
-func dataset(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Method: %v", r.Method)
 
+func dataset(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	results := make(chan struct {
 		dbType string
@@ -251,15 +319,15 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		my, err := mysql.Connect(app.Config)
+		my, err := mysql.ConnectByString(app.Config.MySQL.ConnectionString)
 		if err != nil {
-			log.Printf("Dataset: MySQL: Connect error: %s", err)
+			log.Printf("Error: Dataset: MySQL: Connect: %s", err)
 			return
 		}
 		defer my.Close()
 
-		mysql_pulls, _ := mysql.SelectInt(my, `SELECT COUNT(*) FROM github.pulls;`)
-		mysql_repositories, _ := mysql.SelectInt(my, `SELECT COUNT(*) FROM github.repositories;`)
+		mysql_pulls, _ := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
+		mysql_repositories, _ := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
 
 		results <- struct {
 			dbType string
@@ -277,9 +345,9 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		pg, err := postgres.Connect(app.Config)
+		pg, err := postgres.ConnectByString(app.Config.Postgres.ConnectionString)
 		if err != nil {
-			log.Printf("Dataset: Postgres: Connect error: %s", err)
+			log.Printf("Error: Dataset: Postgres: Connect: %s", err)
 			return
 		}
 		defer pg.Close()
@@ -304,19 +372,19 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		mongo_ctx := context.Background()
-		mongo, err := mongodb.Connect(app.Config, mongo_ctx)
+		mongo, err := mongodb.ConnectByString(app.Config.MongoDB.ConnectionString, mongo_ctx)
 		if err != nil {
-			log.Printf("Dataset: MongoDB: Connect error: %s", err)
+			log.Printf("Error: Dataset: MongoDB: Connect: %s", err)
 			return
 		}
 		defer mongo.Disconnect(mongo_ctx)
 
-		mongo_pulls, err := mongodb.CountDocuments(mongo, "github", "pulls", bson.D{})
+		mongo_pulls, err := mongodb.CountDocuments(mongo, app.Config.MongoDB.DB, "pulls", bson.D{})
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		mongo_repositories, err := mongodb.CountDocuments(mongo, "github", "repositories", bson.D{})
+		mongo_repositories, err := mongodb.CountDocuments(mongo, app.Config.MongoDB.DB, "repositories", bson.D{})
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -1,14 +1,19 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	app "github-stat/internal"
 	"log"
+	"strings"
+	"time"
 
 	"github.com/google/go-github/github"
 	_ "github.com/lib/pq"
+
+	app "github-stat/internal"
 )
 
 func Connect(envVars app.EnvVars) (*sql.DB, error) {
@@ -24,19 +29,56 @@ func Connect(envVars app.EnvVars) (*sql.DB, error) {
 	return db, nil
 }
 
+func ConnectByString(connection_string string) (*sql.DB, error) {
+
+	db, err := sql.Open("postgres", connection_string)
+	if err != nil {
+		log.Printf("PostgreSQL Connect: Error: %s", err)
+		return nil, err
+	}
+
+	return db, nil
+}
+
 func CheckPostgreSQL(connectionString string) string {
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return fmt.Sprintf("Error opening connection: %v", err)
 	}
 	defer db.Close()
 
-	err = db.Ping()
-	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+	// Using a context with a timeout for Ping
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		errChan <- db.PingContext(ctx)
+	}()
+
+	select {
+	case err := <-errChan:
+		if err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				return "Error: Connection timeout exceeded"
+			}
+			return fmt.Sprintf("Error checking connection: %v", err)
+		}
+	case <-ctx.Done():
+		return "Error: Connection timeout exceeded"
 	}
 
 	return "Connected"
+}
+
+func GetConnectionString(envVars app.EnvVars) string {
+	return fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s sslmode=disable",
+		app.Config.Postgres.User,
+		app.Config.Postgres.Password,
+		app.Config.Postgres.DB,
+		app.Config.Postgres.Host,
+		app.Config.Postgres.Port)
 }
 
 func SelectInt(db *sql.DB, query string) (int, error) {
@@ -165,4 +207,106 @@ func DropTable(db *sql.DB, name string) (string, error) {
 	}
 
 	return fmt.Sprintf("Table '%s' dropped successfully or did not exist.", name), nil
+}
+
+func databaseExists(db *sql.DB, dbName string) (bool, error) {
+	var exists bool
+	query := fmt.Sprintf("SELECT EXISTS (SELECT datname FROM pg_database WHERE datname = '%s');", dbName)
+	err := db.QueryRow(query).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func executeSQL(db *sql.DB, query string) error {
+	_, err := db.Exec(query)
+	return err
+}
+
+func InitDB(connection_string string) error {
+
+	newDBName, err := getDbName(connection_string)
+	if err != nil {
+		log.Printf("getDbName: Error: %v\n", err)
+		return err
+	} else {
+		log.Printf("getDbName: New Database name: %s", newDBName)
+	}
+
+	connect_postgres_db_string := strings.Replace(connection_string, fmt.Sprintf("dbname=%s", newDBName), "dbname=postgres", 1)
+
+	log.Printf("InitDB: Connect String to Postgres DB: %s", connect_postgres_db_string)
+
+	mainDB, err := ConnectByString(connect_postgres_db_string)
+	if err != nil {
+		log.Printf("InitDB: Connect to Main DB: Error: %s", newDBName)
+	}
+	defer mainDB.Close()
+
+	dbExists, err := databaseExists(mainDB, newDBName)
+	if err != nil {
+		log.Printf("Error checking if database exists: %v", err)
+	}
+
+	if !dbExists {
+		log.Printf("Database %s does not exist, creating database", newDBName)
+		err := executeSQL(mainDB, fmt.Sprintf("CREATE DATABASE %s;", newDBName))
+		if err != nil {
+			log.Printf("Error creating database %s: %v", newDBName, err)
+		}
+	}
+
+	newDB, err := ConnectByString(connection_string)
+	if err != nil {
+		log.Printf("InitDB: Connect to New DB: Error: %s", newDBName)
+	}
+	defer newDB.Close()
+
+	log.Printf("Creating schemas and tables in database %s", newDBName)
+	schemaSQL := `
+        CREATE EXTENSION IF NOT EXISTS pg_stat_monitor;
+        CREATE SCHEMA IF NOT EXISTS github;
+        CREATE TABLE IF NOT EXISTS github.repositories (
+            id SERIAL PRIMARY KEY,
+            data JSONB
+        );
+        CREATE TABLE IF NOT EXISTS github.pulls (
+            id INT NOT NULL,
+            repo VARCHAR(255) NOT NULL,
+            data JSON,
+            PRIMARY KEY (id, repo)
+        );
+        CREATE TABLE IF NOT EXISTS github.pullsTest (
+            id INT NOT NULL,
+            repo VARCHAR(255) NOT NULL,
+            data JSON,
+            PRIMARY KEY (id, repo)
+        );
+        CREATE TABLE IF NOT EXISTS github.reports_runs (
+            id SERIAL PRIMARY KEY,
+            data JSONB
+        );
+        CREATE TABLE IF NOT EXISTS github.reports_databases (
+            id SERIAL PRIMARY KEY,
+            data JSONB
+        );
+    `
+	err = executeSQL(newDB, schemaSQL)
+	if err != nil {
+		log.Printf("Error creating schemas and tables in %s: %s", newDBName, err)
+	}
+
+	return nil
+}
+
+func getDbName(connStr string) (string, error) {
+	params := strings.Split(connStr, " ")
+	for _, param := range params {
+		keyValue := strings.SplitN(param, "=", 2)
+		if len(keyValue) == 2 && keyValue[0] == "dbname" {
+			return keyValue[1], nil
+		}
+	}
+	return "", errors.New("dbname not found in connection string")
 }

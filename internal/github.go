@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"log"
-	"os"
 	"time"
 
 	"github.com/google/go-github/github"
@@ -15,6 +14,7 @@ type PullsLastUpdate struct {
 	MongoDB    string
 	PostgreSQL string
 	Minimum    string
+	Force      bool
 }
 
 func FetchGitHubPullsByRepos(envVars EnvVars, allRepos []*github.Repository, pullsLastUpdate map[string]*PullsLastUpdate) (map[string][]*github.PullRequest, map[string]int, error) {
@@ -44,15 +44,17 @@ func FetchGitHubPullsByRepos(envVars EnvVars, allRepos []*github.Repository, pul
 	}
 
 	var lastUpdatedTime time.Time
+	var forceUpdate bool
 	var err error
 	for _, repo := range allRepos {
 
 		repoName := repo.GetName()
 		pullLastUpdate := pullsLastUpdate[repoName].Minimum
+		forceUpdate = pullsLastUpdate[repoName].Force
 
 		counter["repos"]++
 
-		if pullLastUpdate == "" {
+		if pullLastUpdate == "" || forceUpdate {
 
 			opts := &github.PullRequestListOptions{
 				State:       "all",
@@ -85,6 +87,7 @@ func FetchGitHubPullsByRepos(envVars EnvVars, allRepos []*github.Repository, pul
 			}
 			counter["repos_full"]++
 		} else {
+
 			opts := &github.PullRequestListOptions{
 				State:       "all",
 				Sort:        "updated",
@@ -95,7 +98,6 @@ func FetchGitHubPullsByRepos(envVars EnvVars, allRepos []*github.Repository, pul
 			lastUpdatedTime, err = time.Parse(time.RFC3339, pullLastUpdate)
 			if err != nil {
 				log.Printf("Error parsing startedAt: %v", err)
-				os.Exit(0)
 			}
 
 			for {
@@ -111,9 +113,9 @@ func FetchGitHubPullsByRepos(envVars EnvVars, allRepos []*github.Repository, pul
 				dateBreak := false
 				for _, pull := range pulls {
 					if pull.UpdatedAt != nil && lastUpdatedTime.After(*pull.UpdatedAt) {
-						if envVars.App.Debug {
-							log.Printf("GitHub API: Pulls: Breaking out of loop because UpdatedAt is after: %s (pull: %s)", *pull.UpdatedAt, *pull.Title)
-						}
+						// if envVars.App.Debug {
+						// 	log.Printf("GitHub API: Pulls: Breaking out of loop because UpdatedAt is after: %s (pull: %s)", *pull.UpdatedAt, *pull.Title)
+						// }
 						dateBreak = true
 						break
 					}

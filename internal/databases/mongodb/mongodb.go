@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
-
-	app "github-stat/internal"
 
 	"github.com/google/go-github/github"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	app "github-stat/internal"
 )
 
 func Connect(envVars app.EnvVars, ctx context.Context) (*mongo.Client, error) {
@@ -28,6 +29,26 @@ func Connect(envVars app.EnvVars, ctx context.Context) (*mongo.Client, error) {
 	}
 
 	return mongodb, nil
+}
+
+func ConnectByString(connection_string string, ctx context.Context) (*mongo.Client, error) {
+
+	clientOptions := options.Client().ApplyURI(connection_string)
+	mongodb, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		log.Printf("MongoDB Error: %s", err)
+		return nil, err
+	}
+
+	return mongodb, nil
+}
+
+func GetConnectionString(envVars app.EnvVars) string {
+	return fmt.Sprintf("mongodb://%s:%s@%s:%s/",
+		envVars.MongoDB.User,
+		envVars.MongoDB.Password,
+		envVars.MongoDB.Host,
+		envVars.MongoDB.Port)
 }
 
 func CheckMongoDB(connectionString string) string {
@@ -51,6 +72,26 @@ func CheckMongoDB(connectionString string) string {
 	}
 
 	return "Connected"
+}
+
+func GetUniqueIntegers(client *mongo.Client, dbName, collectionName string, key string) ([]int64, error) {
+	ctx := context.Background()
+	collection := client.Database(dbName).Collection(collectionName)
+
+	cmd := bson.D{
+		{Key: "distinct", Value: collectionName},
+		{Key: "key", Value: key},
+	}
+
+	var result struct {
+		Values []int64 `bson:"values"`
+	}
+	err := collection.Database().RunCommand(ctx, cmd).Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Values, nil
 }
 
 func CountDocuments(client *mongo.Client, dbName, collectionName string, filter bson.D) (int64, error) {
@@ -124,14 +165,19 @@ func SelectRandomDocument(client *mongo.Client, dbName, collectionName string) (
 	return nil, mongo.ErrNoDocuments
 }
 
-func FindPullRequests(client *mongo.Client, dbName string, collectionName string, filter bson.D, sort bson.D) ([]*github.PullRequest, error) {
+func FindPullRequests(client *mongo.Client, dbName string, collectionName string, filter bson.D, sort bson.D, limit int64) ([]*github.PullRequest, error) {
 
 	ctx := context.Background()
 	collection := client.Database(dbName).Collection(collectionName)
 
 	var pullRequests []*github.PullRequest
+	var opts *options.FindOptions
 
-	opts := options.Find().SetSort(sort)
+	if limit > 0 {
+		opts = options.Find().SetSort(sort).SetLimit(limit)
+	} else {
+		opts = options.Find().SetSort(sort)
+	}
 
 	cursor, err := collection.Find(ctx, filter, opts)
 	if err != nil {
@@ -175,14 +221,19 @@ func FindDocuments(client *mongo.Client, dbName string, collectionName string, f
 
 }
 
-func FindRepos(client *mongo.Client, dbName string, collectionName string, filter bson.D, sort bson.D) ([]*github.Repository, error) {
+func FindRepos(client *mongo.Client, dbName string, collectionName string, filter bson.D, sort bson.D, limit int64) ([]*github.Repository, error) {
 
 	ctx := context.Background()
 	collection := client.Database(dbName).Collection(collectionName)
 
 	var Repos []*github.Repository
+	var opts *options.FindOptions
 
-	opts := options.Find().SetSort(sort)
+	if limit > 0 {
+		opts = options.Find().SetSort(sort).SetLimit(limit)
+	} else {
+		opts = options.Find().SetSort(sort)
+	}
 
 	cursor, err := collection.Find(ctx, filter, opts)
 	if err != nil {
@@ -279,4 +330,18 @@ func DeleteDocuments(client *mongo.Client, dbName string, collectionName string,
 	}
 
 	return nil
+}
+
+func GetNestedField(data map[string]interface{}, fieldPath string) (interface{}, error) {
+	fieldParts := strings.Split(fieldPath, ".")
+	var value interface{} = data
+
+	for _, part := range fieldParts {
+		if v, ok := value.(map[string]interface{})[part]; ok {
+			value = v
+		} else {
+			return nil, fmt.Errorf("field %s not found", fieldPath)
+		}
+	}
+	return value, nil
 }

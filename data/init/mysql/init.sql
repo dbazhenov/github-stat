@@ -12,6 +12,13 @@ CREATE TABLE IF NOT EXISTS pulls (
     PRIMARY KEY (id, repo)
 );
 
+CREATE TABLE IF NOT EXISTS pullsTest (
+    id INT NOT NULL,
+    repo VARCHAR(255) NOT NULL,
+    data JSON,
+    PRIMARY KEY (id, repo)
+);
+
 CREATE TABLE IF NOT EXISTS reports_runs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     data JSON

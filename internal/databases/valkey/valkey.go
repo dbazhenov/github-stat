@@ -3,10 +3,11 @@ package valkey
 import (
 	"encoding/json"
 	"fmt"
-	app "github-stat/internal"
 	"log"
 
 	"github.com/go-redis/redis"
+
+	app "github-stat/internal"
 )
 
 var Valkey *redis.Client
@@ -28,14 +29,6 @@ func InitValkey(envVars app.EnvVars) {
 		log.Printf("Valkey: Connect: %v", Valkey.Options().Addr)
 	}
 }
-
-func Connect(addr string) *redis.Client {
-	Valkey = redis.NewClient(&redis.Options{
-		Addr: addr, // "localhost:6379"
-	})
-	return Valkey
-}
-
 func SaveConfigToValkey(load app.Load) error {
 	data, err := json.Marshal(load)
 	if err != nil {
@@ -44,7 +37,7 @@ func SaveConfigToValkey(load app.Load) error {
 	return Valkey.Set("load_config", data, 0).Err()
 }
 
-func LoadConfigFromValkey() (app.Load, error) {
+func LoadControlPanelConfigFromValkey() (app.Load, error) {
 	var load app.Load
 	data, err := Valkey.Get("load_config").Result()
 	if err != nil {
@@ -52,6 +45,13 @@ func LoadConfigFromValkey() (app.Load, error) {
 	}
 	err = json.Unmarshal([]byte(data), &load)
 	return load, err
+}
+
+func Connect(addr string) *redis.Client {
+	Valkey = redis.NewClient(&redis.Options{
+		Addr: addr, // "localhost:6379"
+	})
+	return Valkey
 }
 
 func SaveToValkey(key string, settings app.Connections) error {
