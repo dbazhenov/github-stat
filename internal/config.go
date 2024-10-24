@@ -83,9 +83,9 @@ func GetEnvVars() (EnvVars, error) {
 
 	var envVars EnvVars
 
-	err := godotenv.Overload()
-	if err != nil {
-		return EnvVars{}, err
+	err := godotenv.Load()
+	if err != nil && !os.IsNotExist(err) {
+		log.Println("Warning: Error loading .env file, continuing with existing environment variables")
 	}
 
 	envVars.GitHub.Organisation = os.Getenv("GITHUB_ORG")
