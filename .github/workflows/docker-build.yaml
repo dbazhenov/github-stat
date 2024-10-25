@@ -3,6 +3,8 @@ name: Build and Push Docker Images
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - '*'
   pull_request:
     branches: [ "main" ]
 
@@ -33,7 +35,9 @@ jobs:
           file: ./cmd/load/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/demo_app_load:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/demo_app_load:latest
+            ${{ secrets.DOCKER_USERNAME }}/demo_app_load:${{ github.ref_name }}
 
       - name: Build and push Docker images for web app
         uses: docker/build-push-action@v2
@@ -42,7 +46,9 @@ jobs:
           file: ./cmd/web/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/demo_app_web:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/demo_app_web:latest
+            ${{ secrets.DOCKER_USERNAME }}/demo_app_web:${{ github.ref_name }}
 
       - name: Build and push Docker images for dataset app
         uses: docker/build-push-action@v2
@@ -51,4 +57,6 @@ jobs:
           file: ./cmd/dataset/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/demo_app_dataset:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/demo_app_dataset:latest
+            ${{ secrets.DOCKER_USERNAME }}/demo_app_dataset:${{ github.ref_name }}
