@@ -16,7 +16,7 @@ import (
 
 func MySQLSwitch1(db *sql.DB, id int) {
 
-	repos_with_pulls, err := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM github.repositories;")
+	repos_with_pulls, err := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM repositories;")
 
 	if err != nil {
 		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
@@ -24,7 +24,7 @@ func MySQLSwitch1(db *sql.DB, id int) {
 		randomIndex := rand.Intn(len(repos_with_pulls))
 		randomRepo := repos_with_pulls[randomIndex]
 
-		query := fmt.Sprintf("SELECT data FROM github.repositories WHERE id = %d;", randomRepo)
+		query := fmt.Sprintf("SELECT data FROM repositories WHERE id = %d;", randomRepo)
 
 		_, err := mysql.SelectString(db, query)
 
@@ -38,7 +38,7 @@ func MySQLSwitch1(db *sql.DB, id int) {
 
 func MySQLSwitch2(db *sql.DB, id int) {
 
-	uniq_pulls_ids, err := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM github.pulls;")
+	uniq_pulls_ids, err := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM pulls;")
 
 	if err != nil {
 		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
@@ -46,7 +46,7 @@ func MySQLSwitch2(db *sql.DB, id int) {
 		randomId := rand.Intn(len(uniq_pulls_ids))
 		randomPull := uniq_pulls_ids[randomId]
 
-		query := fmt.Sprintf("SELECT data FROM github.pulls WHERE id = %d;", randomPull)
+		query := fmt.Sprintf("SELECT data FROM pulls WHERE id = %d;", randomPull)
 
 		pull, err := mysql.SelectPulls(db, query)
 		if err != nil {
@@ -62,7 +62,7 @@ func MySQLSwitch2(db *sql.DB, id int) {
 
 func MySQLSwitch3(db *sql.DB, id int) {
 
-	_, err := mysql.SelectString(db, `SELECT repo FROM github.pulls ORDER BY RAND() LIMIT 1;`)
+	_, err := mysql.SelectString(db, `SELECT repo FROM pulls ORDER BY RAND() LIMIT 1;`)
 	if err != nil {
 		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
 	}
@@ -72,11 +72,10 @@ func MySQLSwitch3(db *sql.DB, id int) {
 func MySQLSwitch4(db *sql.DB, id int) {
 
 	query := `
-		SELECT data FROM github.pulls 
+		SELECT data FROM pulls 
 		WHERE STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(data, '$.created_at')), '%Y-%m-%dT%H:%i:%sZ') >= NOW() - INTERVAL 3 MONTH 
 		LIMIT 10;
 	`
-
 	_, err := mysql.SelectPulls(db, query)
 	if err != nil {
 		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
