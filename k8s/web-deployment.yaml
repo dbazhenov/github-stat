@@ -25,6 +25,13 @@ spec:
             name: demo-app-config
         - secretRef:
             name: demo-app-secret
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "600m"
 ---
 apiVersion: v1
 kind: Service

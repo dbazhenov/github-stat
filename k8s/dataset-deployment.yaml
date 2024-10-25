@@ -16,8 +16,18 @@ spec:
       - name: demo-app-dataset
         image: dbazhenov/demo_app_dataset:latest
         imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
         envFrom:
         - configMapRef:
             name: demo-app-config
         - secretRef:
             name: demo-app-secret
+        env:
+        - name: DEBUG
+          value: "false"

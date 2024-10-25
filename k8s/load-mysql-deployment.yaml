@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: demo-app-load
+  name: demo-app-load-mysql
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: demo-app-load
+      app: demo-app-load-mysql
   template:
     metadata:
       labels:
-        app: demo-app-load
+        app: demo-app-load-mysql
     spec:
       containers:
-      - name: demo-app-load
-        image: dbazhenov/demo_app_load:latest
+      - name: demo-app-load-mysql
+        image: dbazhenov/demo_app_load:0.0.1
         imagePullPolicy: Always
         resources:
           requests:
-            memory: "1Gi"
-            cpu: "1"
+            memory: "2Gi"
+            cpu: "2"
           limits:
-            memory: "6Gi"
+            memory: "2Gi"
             cpu: "3"
         envFrom:
         - configMapRef:
@@ -32,6 +32,6 @@ spec:
         - name: LOAD_MYSQL
           value: "true"
         - name: LOAD_POSTGRES
-          value: "true"
+          value: "false"
         - name: LOAD_MONGODB
-          value: "true"
+          value: "false"

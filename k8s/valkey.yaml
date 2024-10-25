@@ -39,6 +39,13 @@ spec:
       containers:
       - name: valkey
         image: valkey/valkey:8
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "600m"
         env:
         - name: ALLOW_EMPTY_PASSWORD
           value: "yes"

@@ -1,28 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: demo-app-load
+  name: demo-app-load-postgres
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: demo-app-load
+      app: demo-app-load-postgres
   template:
     metadata:
       labels:
-        app: demo-app-load
+        app: demo-app-load-postgres
     spec:
       containers:
-      - name: demo-app-load
+      - name: demo-app-load-postgres
         image: dbazhenov/demo_app_load:latest
         imagePullPolicy: Always
         resources:
           requests:
-            memory: "1Gi"
+            memory: "2Gi"
             cpu: "1"
           limits:
-            memory: "6Gi"
-            cpu: "3"
+            memory: "2Gi"
+            cpu: "1"
         envFrom:
         - configMapRef:
             name: demo-app-config
@@ -30,8 +30,8 @@ spec:
             name: demo-app-secret
         env:
         - name: LOAD_MYSQL
-          value: "true"
+          value: "false"
         - name: LOAD_POSTGRES
           value: "true"
         - name: LOAD_MONGODB
-          value: "true"
+          value: "false"
