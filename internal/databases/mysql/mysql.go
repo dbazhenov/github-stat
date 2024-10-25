@@ -163,7 +163,7 @@ func InsertPulls(db *sql.DB, pullRequests []*github.PullRequest, table string) e
 			return err
 		}
 
-		query := fmt.Sprintf(`INSERT INTO github.%s (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?`, table)
+		query := fmt.Sprintf(`INSERT INTO %s (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?`, table)
 
 		_, err = db.Exec(query, id, *pull.Base.Repo.Name, pullJSON, pullJSON)
 		if err != nil {
@@ -177,7 +177,7 @@ func InsertPulls(db *sql.DB, pullRequests []*github.PullRequest, table string) e
 func CreateTable(db *sql.DB, name string) error {
 
 	query := fmt.Sprintf(`
-	CREATE TABLE IF NOT EXISTS github.%s (
+	CREATE TABLE IF NOT EXISTS %s (
 		id INT NOT NULL,
 		repo VARCHAR(255) NOT NULL,
 		data JSON,
@@ -192,7 +192,7 @@ func CreateTable(db *sql.DB, name string) error {
 }
 
 func DropTable(db *sql.DB, name string) (string, error) {
-	query := fmt.Sprintf("DROP TABLE IF EXISTS github.%s", name)
+	query := fmt.Sprintf("DROP TABLE IF EXISTS %s", name)
 	_, err := db.Exec(query)
 	if err != nil {
 		return "", err

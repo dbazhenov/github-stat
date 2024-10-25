@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-load
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-load
+  template:
+    metadata:
+      labels:
+        app: demo-app-load
+    spec:
+      containers:
+      - name: demo-app-load
+        image: dbazhenov/demo_app_load:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: demo-app-config
+        - secretRef:
+            name: demo-app-secret
+        env:
+        - name: LOAD_MYSQL
+          value: "true"
+        - name: LOAD_POSTGRES
+          value: "true"
+        - name: LOAD_MONGODB
+          value: "true"

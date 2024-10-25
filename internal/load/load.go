@@ -151,13 +151,9 @@ func PostgresSwitch4(db *sql.DB, id int) {
 	}
 }
 
-func MongoDBSwitch1(client *mongo.Client, id int) {
+func MongoDBSwitch1(client *mongo.Client, db string, id int) {
 
-	// _, err := mongodb.SelectRandomDocument(client, "github", "repositories")
-	// if err != nil {
-	// 	log.Printf("MongoDB: Error: goroutine: %d: message: %s", id, err)
-	// }
-	ids, err := mongodb.GetUniqueIntegers(client, "github", "repositories", "id")
+	ids, err := mongodb.GetUniqueIntegers(client, db, "repositories", "id")
 
 	if err != nil {
 		log.Printf("MongoDB: Error: goroutine: %d: message: %s", id, err)
@@ -166,18 +162,18 @@ func MongoDBSwitch1(client *mongo.Client, id int) {
 		randomRepo := ids[randomIndex]
 
 		filter := bson.D{{Key: "id", Value: randomRepo}}
-		repo, err := mongodb.FindOne(client, "github", "repositories", filter, bson.D{})
+		repo, err := mongodb.FindOne(client, db, "repositories", filter, bson.D{})
 		if err != nil {
 			log.Printf("MongoDB: Error: goroutine: %d: message: %s", id, err)
 		}
 
 		if randomRepo%2 == 0 {
-			_, err = mongodb.UpsertOneDoc(client, "github", "repositoriesTest", repo)
+			_, err = mongodb.UpsertOneDoc(client, db, "repositoriesTest", repo)
 			if err != nil {
 				log.Printf("MongoDB: Upsert One: Error: %s", err)
 			}
 		} else {
-			_, err = mongodb.InsertOneDoc(client, "github", "repositoriesTest", repo)
+			_, err = mongodb.InsertOneDoc(client, db, "repositoriesTest", repo)
 			if err != nil && !mongo.IsDuplicateKeyError(err) {
 				log.Printf("MongoDB: Insert One: Error: %s", err)
 			}
@@ -185,7 +181,7 @@ func MongoDBSwitch1(client *mongo.Client, id int) {
 
 		filter_delete := bson.D{{Key: "id", Value: randomRepo}}
 
-		err = mongodb.DeleteDocuments(client, "github", "repositoriesTest", filter_delete)
+		err = mongodb.DeleteDocuments(client, db, "repositoriesTest", filter_delete)
 
 		if err != nil {
 			log.Printf("MongoDB: Delete old documents: Error: %s", err)
@@ -193,34 +189,34 @@ func MongoDBSwitch1(client *mongo.Client, id int) {
 
 	}
 
-	_, err = mongodb.SelectRandomDocument(client, "github", "pulls")
+	_, err = mongodb.SelectRandomDocument(client, db, "pulls")
 	if err != nil {
 		log.Printf("MongoDB: Error: goroutine: %d: message: %s", id, err)
 	}
 
 }
 
-func MongoDBSwitch2(client *mongo.Client, id int) {
+func MongoDBSwitch2(client *mongo.Client, db string, id int) {
 
-	one_document, err := mongodb.SelectRandomDocument(client, "github", "pulls")
+	one_document, err := mongodb.SelectRandomDocument(client, db, "pulls")
 
 	if err != nil {
 		log.Printf("MongoDB: Error: goroutine: %d: message: %s", id, err)
 	} else {
 
 		filter := bson.D{{Key: "name", Value: one_document["repo"]}}
-		_, err := mongodb.FindOne(client, "github", "repositories", filter, bson.D{})
+		_, err := mongodb.FindOne(client, db, "repositories", filter, bson.D{})
 		if err != nil {
 			log.Printf("MongoDB: Error: goroutine: %d: message: %s", id, err)
 		}
 
 		if id%2 == 0 {
-			_, err = mongodb.UpsertOneDoc(client, "github", "pullsTest", one_document)
+			_, err = mongodb.UpsertOneDoc(client, db, "pullsTest", one_document)
 			if err != nil {
 				log.Printf("MongoDB: Upsert One: Error: %s", err)
 			}
 		} else {
-			_, err = mongodb.InsertOneDoc(client, "github", "pullsTest", one_document)
+			_, err = mongodb.InsertOneDoc(client, db, "pullsTest", one_document)
 			if err != nil && !mongo.IsDuplicateKeyError(err) {
 				log.Printf("MongoDB: Insert One: Error: %s", err)
 			}
@@ -228,7 +224,7 @@ func MongoDBSwitch2(client *mongo.Client, id int) {
 
 		filter_delete := bson.D{{Key: "id", Value: one_document["id"]}}
 
-		err = mongodb.DeleteDocuments(client, "github", "pullsTest", filter_delete)
+		err = mongodb.DeleteDocuments(client, db, "pullsTest", filter_delete)
 
 		if err != nil {
 			log.Printf("MongoDB: Delete old documents: Error: %s", err)
@@ -237,11 +233,11 @@ func MongoDBSwitch2(client *mongo.Client, id int) {
 
 }
 
-func MongoDBSwitch3(client *mongo.Client, id int) {
+func MongoDBSwitch3(client *mongo.Client, db string, id int) {
 
 	filterPulls := bson.D{}
 
-	documents, err := mongodb.FindPullRequests(client, "github", "pulls", filterPulls, bson.D{}, 100)
+	documents, err := mongodb.FindPullRequests(client, db, "pulls", filterPulls, bson.D{}, 100)
 	if err != nil {
 		log.Printf("MongoDB: List docs: Error: %s", err)
 	}
@@ -254,19 +250,19 @@ func MongoDBSwitch3(client *mongo.Client, id int) {
 		pulls_ids[i] = doc.ID
 	}
 
-	_, err = mongodb.InsertManyDocuments(client, "github", "pullsTest", interfaceDocs)
+	_, err = mongodb.InsertManyDocuments(client, db, "pullsTest", interfaceDocs)
 	if err != nil && !mongo.IsDuplicateKeyError(err) {
 		log.Printf("MongoDB: Insert: Error: %s", err)
 	}
 
 	// Create filter to delete documents by id
 	filter_delete := bson.D{{Key: "id", Value: bson.D{{Key: "$in", Value: pulls_ids}}}}
-	err = mongodb.DeleteDocuments(client, "github", "pullsTest", filter_delete)
+	err = mongodb.DeleteDocuments(client, db, "pullsTest", filter_delete)
 	if err != nil {
 		log.Printf("MongoDB: Delete old documents: Error: %s", err)
 	}
 
-	repos, err := mongodb.FindRepos(client, "github", "repositories", filterPulls, bson.D{}, 100)
+	repos, err := mongodb.FindRepos(client, db, "repositories", filterPulls, bson.D{}, 100)
 	if err != nil {
 		log.Printf("MongoDB: List docs: Error: %s", err)
 	}
@@ -279,26 +275,26 @@ func MongoDBSwitch3(client *mongo.Client, id int) {
 		repos_ids[i] = doc.ID
 	}
 
-	_, err = mongodb.InsertManyDocuments(client, "github", "repositoriesTest", reposDocs)
+	_, err = mongodb.InsertManyDocuments(client, db, "repositoriesTest", reposDocs)
 	if err != nil && !mongo.IsDuplicateKeyError(err) {
 		log.Printf("MongoDB: Insert: Error: %s", err)
 	}
 
 	// Create filter to delete documents by id
 	filter_repos_delete := bson.D{{Key: "id", Value: bson.D{{Key: "$in", Value: repos_ids}}}}
-	err = mongodb.DeleteDocuments(client, "github", "repositoriesTest", filter_repos_delete)
+	err = mongodb.DeleteDocuments(client, db, "repositoriesTest", filter_repos_delete)
 	if err != nil {
 		log.Printf("MongoDB: Delete old documents: Error: %s", err)
 	}
 
 }
 
-func MongoDBSwitch4(client *mongo.Client, id int) {
+func MongoDBSwitch4(client *mongo.Client, db string, id int) {
 
 	filter_repos := bson.D{{Key: "stargazerscount", Value: bson.D{{Key: "$gt", Value: 10}}}}
 
 	sort_repos := bson.D{{Key: "stargazerscount", Value: -1}}
-	_, err := mongodb.FindRepos(client, "github", "repositories", filter_repos, sort_repos, 10)
+	_, err := mongodb.FindRepos(client, db, "repositories", filter_repos, sort_repos, 10)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -307,19 +303,19 @@ func MongoDBSwitch4(client *mongo.Client, id int) {
 
 	filterPulls := bson.D{{Key: "createdat", Value: bson.D{{Key: "$gt", Value: time}}}}
 
-	documents, err := mongodb.FindDocuments(client, "github", "pulls", filterPulls, bson.D{}, 10)
+	documents, err := mongodb.FindDocuments(client, db, "pulls", filterPulls, bson.D{}, 10)
 	if err != nil {
 		log.Printf("MongoDB: List docs: Error: %s", err)
 	}
 
-	_, err = mongodb.InsertManyDocuments(client, "github", "pullsTest", documents)
+	_, err = mongodb.InsertManyDocuments(client, db, "pullsTest", documents)
 	if err != nil && !mongo.IsDuplicateKeyError(err) {
 		log.Printf("MongoDB: Insert Many Docs: Error: %s", err)
 	}
 
 	filter_delete := bson.D{{Key: "createdat", Value: bson.D{{Key: "$lt", Value: time}}}}
 
-	err = mongodb.DeleteDocuments(client, "github", "pullsTest", filter_delete)
+	err = mongodb.DeleteDocuments(client, db, "pullsTest", filter_delete)
 
 	if err != nil {
 		log.Printf("MongoDB: Delete old documents: Error: %s", err)

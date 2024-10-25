@@ -24,7 +24,7 @@ func InitValkey(envVars app.EnvVars) {
 
 	_, err := Valkey.Ping().Result()
 	if err != nil {
-		log.Fatalf("Valkey: Failed to connect to: %v", err)
+		log.Printf("Valkey: Failed to connect to: %v", err)
 	} else {
 		log.Printf("Valkey: Connect: %v", Valkey.Options().Addr)
 	}

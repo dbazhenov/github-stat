@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-dataset
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-dataset
+  template:
+    metadata:
+      labels:
+        app: demo-app-dataset
+    spec:
+      containers:
+      - name: demo-app-dataset
+        image: dbazhenov/demo_app_dataset:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: demo-app-config
+        - secretRef:
+            name: demo-app-secret

@@ -96,6 +96,8 @@ func manageLoad(db string) {
 		}(i, rctx)
 	}
 
+	log.Printf("Manage Load: Start %s: %d routines in progress", db, len(routines))
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -129,6 +131,7 @@ func manageLoad(db string) {
 						runDB(db, rctx, id)
 					}(i, rctx)
 				}
+				log.Printf("Manage Load: %s: %d routines in progress", db, len(routines))
 			}
 
 			// Manage changes in number of connections
@@ -158,6 +161,8 @@ func manageLoad(db string) {
 						}(i, rctx)
 					}
 				}
+
+				log.Printf("Manage Load: %s: %d routines in progress", db, len(routines))
 
 				currentConnections = newConnections
 			}
@@ -273,6 +278,7 @@ func runMongoDB(ctx context.Context, id int) {
 	}
 	defer client.Disconnect(mongo_ctx)
 
+	db := app.Config.MongoDB.DB
 	log.Printf("MongoDB: goroutine %d in progress", id+1)
 
 	for {
@@ -283,19 +289,19 @@ func runMongoDB(ctx context.Context, id int) {
 		default:
 
 			if LoadConfig.MongoDBSwitch1 {
-				load.MongoDBSwitch1(client, id)
+				load.MongoDBSwitch1(client, db, id)
 			}
 
 			if LoadConfig.MongoDBSwitch2 {
-				load.MongoDBSwitch2(client, id)
+				load.MongoDBSwitch2(client, db, id)
 			}
 
 			if LoadConfig.MongoDBSwitch3 {
-				load.MongoDBSwitch3(client, id)
+				load.MongoDBSwitch3(client, db, id)
 			}
 
 			if LoadConfig.MongoDBSwitch4 {
-				load.MongoDBSwitch4(client, id)
+				load.MongoDBSwitch4(client, db, id)
 			}
 
 		}
@@ -340,8 +346,6 @@ func checkConnection(db string) bool {
 		result = app.Config.Postgres.ConnectionStatus
 	}
 
-	log.Printf("DB Connect: %s: Status: %s", db, result)
-
 	if result == "Connected" {
 		return true
 	} else {
@@ -350,7 +354,8 @@ func checkConnection(db string) bool {
 }
 
 func checkConnectSettings() {
-	log.Printf("Check connection parameters to databases.")
+
+	log.Printf("Valkey: Check and update connection to databases: MongoDB: %v, Postgres: %v, MySQL: %v", app.Config.LoadGenerator.MongoDB, app.Config.LoadGenerator.Postgres, app.Config.LoadGenerator.MySQL)
 	settings, err := valkey.LoadFromValkey("db_connections")
 	if err != nil {
 		log.Printf("Error: Valkey: Get connections to databases: %v", err)
@@ -362,6 +367,10 @@ func checkConnectSettings() {
 		} else {
 			app.Config.MongoDB.ConnectionString = mongodb.GetConnectionString(app.Config)
 		}
+	}
+
+	if settings.MongoDBDatabase != "" {
+		app.Config.MongoDB.DB = settings.MongoDBDatabase
 	}
 
 	if app.Config.LoadGenerator.MySQL {

@@ -83,8 +83,8 @@ func GetEnvVars() (EnvVars, error) {
 
 	var envVars EnvVars
 
-	err := godotenv.Load()
-	if err != nil && !os.IsNotExist(err) {
+	err := godotenv.Overload()
+	if err != nil {
 		log.Println("Warning: Error loading .env file, continuing with existing environment variables")
 	}
 
@@ -161,7 +161,7 @@ func GetConfig() EnvVars {
 
 	envVars, err := GetEnvVars()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("Error loading .env file")
 	}
 
 	return envVars
@@ -172,7 +172,7 @@ func InitConfig() {
 
 	envVars, err := GetEnvVars()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("Error loading .env file")
 	}
 
 	Config = envVars

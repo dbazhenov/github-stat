@@ -41,6 +41,7 @@ func main() {
 
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
 		helperSleep(app.Config)
+		app.InitConfig()
 	}
 }
 
@@ -87,7 +88,7 @@ func fetchGitHubData(envVars app.EnvVars) {
 	// Get all the repositories of the organization.
 	allRepos, counterRepos, err := app.FetchGitHubRepos(envVars)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error: FetchGitHubRepos: %v", err)
 	}
 
 	report.Timer["ApiRepos"] = time.Now().UnixMilli()
@@ -103,7 +104,7 @@ func fetchGitHubData(envVars app.EnvVars) {
 		// Get the latest Pull Requests updates to download only the new ones. Will download all Pull Requests on the first run.
 		pullsLastUpdate, err := getLatestUpdates(envVars, allRepos)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("getLatestUpdates: %v", err)
 		}
 
 		report.Timer["DBLatestUpdates"] = time.Now().UnixMilli()
@@ -111,7 +112,7 @@ func fetchGitHubData(envVars app.EnvVars) {
 		// Get Pull Requests for all repositories.
 		allPulls, counterPulls, err = app.FetchGitHubPullsByRepos(envVars, allRepos, pullsLastUpdate)
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("FetchGitHubPullsByRepos: %v", err)
 		}
 
 		report.Timer["ApiPulls"] = time.Now().UnixMilli()
@@ -240,7 +241,7 @@ func asyncProcessDBs(envVars app.EnvVars, allRepos []*github.Repository, allPull
 	}
 
 	if err := g.Wait(); err != nil {
-		log.Fatalf("Error: %v", err)
+		log.Printf("Error: asyncProcessDBs: %v", err)
 	}
 
 }
@@ -259,7 +260,7 @@ func getLatestUpdatesFromMySQL(envVars app.EnvVars) (map[string]string, error) {
 			repo,
 			MAX(JSON_UNQUOTE(JSON_EXTRACT(data, '$.updated_at'))) AS updated_at
 		FROM
-			github.pulls
+			pulls
 		GROUP BY
 			repo
 		ORDER BY
@@ -569,7 +570,7 @@ func PostgreSQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, 
 			}
 		}
 	}
-	log.Printf("PG: Report: %v", report.Counter.PullsInserted)
+
 	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
 	report.FinishedAtUnix = time.Now().UnixMilli()
 	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
@@ -805,7 +806,7 @@ func helperReportFinish(envVars app.EnvVars, report app.Report, counterPulls map
 	}
 
 	if err := g.Wait(); err != nil {
-		log.Fatalf("Error: %v", err)
+		log.Printf("Error: helperReportFinish: %v", err)
 	}
 
 	log.Printf("Successfully completed: Final Report: %s", reportJSON)

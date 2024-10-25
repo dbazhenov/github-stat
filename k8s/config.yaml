@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-app-secret
+type: Opaque
+stringData:
+  GITHUB_TOKEN: ""
+  MONGODB_PASSWORD: password
+  PG_PASSWORD: password
+  MYSQL_PASSWORD: password
+  VALKEY_PASSWORD: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-app-config
+data:
+  GITHUB_ORG: percona
+  CONTROL_PANEL_PORT: "3001"
+  LOAD_MYSQL: "true"
+  LOAD_POSTGRES: "true"
+  LOAD_MONGODB: "true"
+  VALKEY_ADDR: valkey-service
+  VALKEY_PORT: "6379"
+  VALKEY_DB: "0"
+  MONGODB_USER: databaseAdmin
+  MONGODB_DB: dataset
+  MONGODB_HOST: "localhost"
+  MONGODB_PORT: "27017"
+  PG_USER: postgres
+  PG_DB: dataset
+  PG_HOST: "localhost"
+  PG_PORT: "5432"
+  MYSQL_USER: root
+  MYSQL_DB: dataset
+  MYSQL_HOST: "localhost"
+  MYSQL_PORT: "3306"
+  DELAY_MINUTES: "3"
+  DEBUG: "true"

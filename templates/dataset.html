@@ -19,6 +19,10 @@
             </thead>
             <tbody>
             <tr>
+                <td>Database</td>
+                <td id="mysql-database">{{ .Dataset.MySQL.DBName }}</td>
+            </tr>
+            <tr>
                 <td>Repositories</td>
                 <td id="mysql-repositories">{{ .Dataset.MySQL.Repositories }}</td>
             </tr>
@@ -40,6 +44,10 @@
             </thead>
             <tbody>
             <tr>
+                <td>Database</td>
+                <td id="postgresql-database">{{ .Dataset.PostgreSQL.DBName }}</td>
+            </tr>
+            <tr>
                 <td>Repositories</td>
                 <td id="postgresql-repositories">{{ .Dataset.PostgreSQL.Repositories }}</td>
             </tr>
@@ -60,6 +68,10 @@
             </tr>
             </thead>
             <tbody>
+            <tr>
+                <td>Database</td>
+                <td id="mongodb-database">{{ .Dataset.MongoDB.DBName }}</td>
+            </tr>
             <tr>
                 <td>Repositories</td>
                 <td id="mongodb-repositories">{{ .Dataset.MongoDB.Repositories }}</td>

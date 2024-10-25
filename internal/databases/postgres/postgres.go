@@ -48,7 +48,7 @@ func CheckPostgreSQL(connectionString string) string {
 	defer db.Close()
 
 	// Using a context with a timeout for Ping
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	errChan := make(chan error, 1)
@@ -220,8 +220,20 @@ func databaseExists(db *sql.DB, dbName string) (bool, error) {
 }
 
 func executeSQL(db *sql.DB, query string) error {
-	_, err := db.Exec(query)
-	return err
+	const maxRetries = 10
+	for i := 0; i < maxRetries; i++ {
+		_, err := db.Exec(query)
+		if err == nil {
+			return nil
+		}
+		log.Printf("Error executing SQL (attempt %d/%d): %v", i+1, maxRetries, err)
+		if strings.Contains(err.Error(), "server login has been failing") {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		return err
+	}
+	return fmt.Errorf("reached maximum retry limit for query: %s", query)
 }
 
 func InitDB(connection_string string) error {

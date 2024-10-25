@@ -114,6 +114,10 @@ func getDBConnectSettings() {
 		app.Config.MongoDB.ConnectionString = mongodb.GetConnectionString(app.Config)
 	}
 
+	if settings.MongoDBDatabase != "" {
+		app.Config.MongoDB.DB = settings.MongoDBDatabase
+	}
+
 	if app.Config.MongoDB.ConnectionString != "" {
 		app.Config.MongoDB.ConnectionStatus = mongodb.CheckMongoDB(app.Config.MongoDB.ConnectionString)
 	}
@@ -145,6 +149,7 @@ func prepareIndexData() app.IndexData {
 	var Settings app.Connections
 
 	Settings.MongoDBConnectionString = app.Config.MongoDB.ConnectionString
+	Settings.MongoDBDatabase = app.Config.MongoDB.DB
 	Settings.MongoDBStatus = app.Config.MongoDB.ConnectionStatus
 
 	Settings.MySQLConnectionString = app.Config.MySQL.ConnectionString
@@ -196,7 +201,7 @@ func start(w http.ResponseWriter, r *http.Request) {
 
 		LoadConfig, err := valkey.LoadControlPanelConfigFromValkey()
 		if err != nil {
-			log.Printf("Error: Valkey: Start: Get connections to databases: %s", err)
+			log.Printf("Error: Valkey: Start: Get Control Panel Gonfig: %s", err)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -211,6 +216,8 @@ func settings(w http.ResponseWriter, r *http.Request) {
 
 		mysqlConnectionString := r.FormValue("mysqlConnectionString")
 		mongodbConnectionString := r.FormValue("mongodbConnectionString")
+		mongodbDatabase := r.FormValue("mongodbDatabase")
+
 		postgresqlConnectionString := r.FormValue("postgresqlConnectionString")
 
 		create_db_mysql := r.FormValue("create_db_mysql")
@@ -252,18 +259,25 @@ func settings(w http.ResponseWriter, r *http.Request) {
 			app.Config.MongoDB.ConnectionString = mongodbConnectionString
 		}
 		valkeySettings.MongoDBStatus = mongodbStatus
+		if mongodbDatabase != "" {
+			valkeySettings.MongoDBDatabase = mongodbDatabase
+		}
 
 		postgresqlStatus := postgres.CheckPostgreSQL(postgresqlConnectionString)
 		postgresCreateSchema := false
+
 		if postgresqlStatus == "Connected" {
 			valkeySettings.PostgresConnectionString = postgresqlConnectionString
 			app.Config.Postgres.ConnectionString = postgresqlConnectionString
-		} else if strings.Contains(postgresqlStatus, "does not exist") {
+		} else if strings.Contains(postgresqlStatus, "does not exist") || strings.Contains(postgresqlStatus, "server login has been failing") {
 
 			if create_db_postgres != "" {
+
 				err := postgres.InitDB(postgresqlConnectionString)
 				if err != nil {
+
 					postgresqlStatus = fmt.Sprintf("Error: Postgres Database creation error: %v", err)
+
 					postgresCreateSchema = true
 				} else {
 
@@ -275,7 +289,8 @@ func settings(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			} else {
-				postgresqlStatus = "Need to create a database and schema. Click the Create Postgres Database button."
+
+				postgresqlStatus = fmt.Sprintf("Need to create a database and schema. Click the Create Postgres Database button. Err: %s", postgresqlStatus)
 				postgresCreateSchema = true
 			}
 		}
@@ -326,15 +341,27 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 		}
 		defer my.Close()
 
-		mysql_pulls, _ := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
-		mysql_repositories, _ := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
+		dbName := ""
+		err = my.QueryRow(`SELECT DATABASE();`).Scan(&dbName)
+		if err != nil {
+			log.Printf("Error: Dataset: MySQL: Getting MySQL DB name: %v", err)
+		}
 
+		mysql_pulls, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
+		if err != nil {
+			log.Printf("Error: Dataset: MySQL: Pulls: %v", err)
+		}
+		mysql_repositories, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
+		if err != nil {
+			log.Printf("Error: Dataset: MySQL: Repos: %v", err)
+		}
 		results <- struct {
 			dbType string
 			data   app.Database
 		}{
 			dbType: "mysql",
 			data: app.Database{
+				DBName:       dbName,
 				Repositories: mysql_repositories,
 				PullRequests: mysql_pulls,
 			},
@@ -352,15 +379,27 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 		}
 		defer pg.Close()
 
-		pg_pulls, _ := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
-		pg_repositories, _ := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
+		dbName := ""
+		err = pg.QueryRow(`SELECT current_database();`).Scan(&dbName)
+		if err != nil {
+			log.Printf("Error: Dataset: Postgres: Getting PostgreSQL DB name: %v", err)
+		}
 
+		pg_pulls, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
+		if err != nil {
+			log.Printf("Error: Dataset: Postgres: Pulls: %v", err)
+		}
+		pg_repositories, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
+		if err != nil {
+			log.Printf("Error: Dataset: Postgres: Repos: %v", err)
+		}
 		results <- struct {
 			dbType string
 			data   app.Database
 		}{
 			dbType: "postgresql",
 			data: app.Database{
+				DBName:       dbName,
 				Repositories: pg_repositories,
 				PullRequests: pg_pulls,
 			},
@@ -379,14 +418,18 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 		}
 		defer mongo.Disconnect(mongo_ctx)
 
-		mongo_pulls, err := mongodb.CountDocuments(mongo, app.Config.MongoDB.DB, "pulls", bson.D{})
+		dbName := app.Config.MongoDB.DB
+
+		mongo_pulls, err := mongodb.CountDocuments(mongo, dbName, "pulls", bson.D{})
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("Error: Dataset: MongoDB: Count Pulls: %s", err)
+			mongo_pulls = 0
 		}
 
-		mongo_repositories, err := mongodb.CountDocuments(mongo, app.Config.MongoDB.DB, "repositories", bson.D{})
+		mongo_repositories, err := mongodb.CountDocuments(mongo, dbName, "repositories", bson.D{})
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("Error: Dataset: MongoDB: Count Repos: %s", err)
+			mongo_repositories = 0
 		}
 
 		results <- struct {
@@ -395,6 +438,7 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 		}{
 			dbType: "mongodb",
 			data: app.Database{
+				DBName:       dbName,
 				Repositories: int(mongo_repositories),
 				PullRequests: int(mongo_pulls),
 			},

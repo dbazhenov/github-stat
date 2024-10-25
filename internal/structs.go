@@ -24,6 +24,7 @@ type Connections struct {
 	PostgresConnectionString string `json:"postgres_connection_string"`
 	PostgresStatus           string `json:"postgres_status"`
 	MongoDBConnectionString  string `json:"mongodb_connection_string"`
+	MongoDBDatabase          string `json:"mongodb_database"`
 	MongoDBStatus            string `json:"mongodb_status"`
 }
 
@@ -38,6 +39,7 @@ type IndexData struct {
 }
 
 type Database struct {
-	Repositories int `json:"repositories"`
-	PullRequests int `json:"pull_requests"`
+	DBName       string `json:"db_name"`
+	Repositories int    `json:"repositories"`
+	PullRequests int    `json:"pull_requests"`
 }

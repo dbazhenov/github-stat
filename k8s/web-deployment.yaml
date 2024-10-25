@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-web
+  annotations:
+    kubernetes.io/change-cause: "Update to latest image"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app-web
+  template:
+    metadata:
+      labels:
+        app: demo-app-web
+      annotations:
+        kubernetes.io/change-cause: "Update to latest image"
+    spec:
+      containers:
+      - name: demo-app-web
+        image: dbazhenov/demo_app_web:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: demo-app-config
+        - secretRef:
+            name: demo-app-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-web-service
+spec:
+  selector:
+    app: demo-app-web
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3001
+  type: LoadBalancer
