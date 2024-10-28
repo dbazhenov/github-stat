@@ -18,10 +18,10 @@ spec:
         imagePullPolicy: Always
         resources:
           requests:
-            memory: "2Gi"
+            memory: "1Gi"
             cpu: "1"
           limits:
-            memory: "2Gi"
+            memory: "1Gi"
             cpu: "1"
         envFrom:
         - configMapRef:

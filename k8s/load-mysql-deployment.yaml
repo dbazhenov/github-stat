@@ -14,15 +14,15 @@ spec:
     spec:
       containers:
       - name: demo-app-load-mysql
-        image: dbazhenov/demo_app_load:0.0.1
+        image: dbazhenov/demo_app_load:latest
         imagePullPolicy: Always
         resources:
           requests:
-            memory: "2Gi"
-            cpu: "2"
+            memory: "1Gi"
+            cpu: "1"
           limits:
-            memory: "2Gi"
-            cpu: "3"
+            memory: "1Gi"
+            cpu: "1"
         envFrom:
         - configMapRef:
             name: demo-app-config

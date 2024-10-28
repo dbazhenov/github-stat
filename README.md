@@ -1,143 +1,168 @@
-# Golang application to demonstrate work with MySQL, PostgreSQL, MongoDB databases.
+# Demo application to demonstrate MySQL, Postgres, MongoDB databases, monitoring and deployment in Kubernetes.
 
-This is a great opportunity to learn about Go and how it works with MySQL, PostgreSQL, MongoDB databases in JSON format.
+This is a great opportunity to learn about Go and how it works with MySQL, PostgreSQL, MongoDB databases.
 
-The script allows you to write JSON documents to three databases in parallel. Documents of the same type and the script algorithm is the same for each database, as a result you can compare speed, data volume and convenience of working with each database. 
+The application is a web-based control panel through which you can manage the load on the databases. In combination with Percona Monitoring and Management (PMM) tools, you will have an excellent tool for demonstrating databases and their capabilities.
 
-The application requires Docker and Go on your machine.
+The application consists of three components:
+1. Control Panel - a web application that you can run in your browser. The control panel contains controls and load switches for databases MySQL, Postgres, MongoDB. The control panel also contains Settings tabs for configuring the connection to databases and Dataset tab for tracking the dataset state.
+2. Dataset Loader - Go application that fetches data from GitHub via API and loads it into databases. It is used to provide databases with data for testing and load simulation. The component loads data into an empty database and periodically loads new data to keep the dataset up to date.
+3. Load Generator - Go application that connects to databases and generates SQL and NoSQL queries based on control panel settings (component 1)
 
-The application performs the following functions:
-1. Receives data from GitHub API. The list of repositories and Pull Requests for the selected organization will be retrieved. 
-2. Asynchronously writes data to three databases Postgres, MySQL, MongoDB. The algorithm and the write data itself is the same for all the databases, thus we can compare the queries, their query performance and execution speed.
-3. Simulation of database load in different scenarios (in development). Dataset in databases will be used for different types of queries and parameters.
-4. Dashboards with analytical reports on the dataset (in development). A web server and web pages with information about Pull Requests and Repositories will be launched. Such as numbers (PRs, comments, stars, contributors, forks), statuses, average response and close times. In this way we can assess the health of the open source organization on GitHub.
+All three components work as a single application and allow you to experiment with databases. The application can be run locally using Docker Compose or in the cloud using Kubernetes.
 
-The default configuration uses:
-1. Docker containers with Percona Server for MySQL, Percona Distribution for PostgreSQL and Percona Server for MySQL. 
-2. GitHub organization Percona, as it has about 200 public repositories and more than 40k Pull Requests.
-You can use any other configuration or databases. 
+![Demo Contol Panel](./assets/readme-contol-panel.png)
 
-Algorithm of the data fetching and storing application:
-1. The database connection configuration is set in environment variables or .env file. See .env.example
-2.The databases for the test can be run using Docker, docker-compose.yaml file is located in the main directory.
-3. The script reads the configuration.
-4. Runs an infinite loop that runs the main process of fetching and writing data. 
-5. Runs http requests to the Github API to get JSON documents with repository information and Pull Requests. On the first run, all Pull Requests are retrieved. On subsequent runs, the application checks for the latest updates in the databases and retrieves only new Pull Requests from the API.
-6. Runs asynchronously write to three databases using the same algorithm for the same data. 
-7. Reports are written to separate tables and collections for each run and each database.
-8. A log of the operations performed is output to the terminal. 
-9. The script is repeated in a loop with a period set in the configuration.
+The application can connect to and generate load on MySQL, Postgres and MongoDB databases in the cloud or Kubernetes. You can start the databases with:
+1. Docker compose - configuration is available in the repository. 
+2. Percona Everest or Percona Operators in a Kubernetes cluster. If the databases are not externally accessible, then run the application in the same cluster. 
+3. In another way that is convenient for you. 
+Connection parameters can be set in environment variables or in the Settings tab of the Control Panel of the application.
 
-## Quick start
+Usage Scenario:
+1. Start the control panel in your browser (for example on iPad)
+2. Start PMM in the browser (for example on a screen or laptop)
+3. Install Percona Everest, run it in the browser and create MySQL, Postgres, MongoDB databases. 
+4. Connect the databases in the control panel settings
+5. Change the load on the control panel and monitor the changes on PMM.
+
+How it works technically:
+1. Control panel is a web application, when you adjust or switch, the settings are stored in the Valkey database. 
+2. Dataset loader - a constantly running script that checks the settings in Valkey every 5 seconds, connects to the databases and loads the data.
+3. Load Generator - a constantly running script that can work on one database or on all three databases. Every 5 seconds it checks the load settings in Valkey. Based on the settings, it creates separate go routines (parallel threads) of load, each of which performs a connection to the database and runs SQL and NoSQL queries, which can be switched in the Control Panel. Queries are available in the file internal/load/load.go 
+
+## Running locally with Docker 
 
 1. Clone the project repository
 
 `git clone git@github.com:dbazhenov/github-stat.git`
 
-2. Run the environment, this will run the three databases locally.
+2. Run the environment, this will run the three databases locally. Check docker-compose.yaml and add the correct versions or configurations if necessary.
 
 `docker compose up -d`
 
-3. Copy or rename `.env.example` to `.env`
-
-4. Run the script
-
-`go run cmd/main/main.go`
-
-You will see in the terminal the process of writing identical JSON documents to databases in parallel.
-
-Also, the results of each run will be written to a table or collection of 'reports_*' in each database.
-
-## Installation and launch.
-
-1. Clone the repository.
-
-2. Start the environment with Docker using docker-compose.yaml in the main project directory.
-
-`docker compose up -d`
-
-This starts three databases:
-- MySQL. Percona Server for MySQL 8
-- PostgreSQL. Percona Distribution for PostgreSQL 16.2
-- MongoDB. Percona Server for MongoDB 7
-
-For Postgres and MySQL, data schemas will be created based on the data/init/* files
-
-3. (Optional) Connect to databases using GUI
-- MySQL Workbench for MySQL
-- pgAdmin for Postgres
-- MongoDB Compass for MongoDB
-
-This will allow you to explore the data in a user-friendly interface.
-
-4. Copy or rename `.env.example` to `.env`
-
-Set the parameters in the .env file
+3. Copy or rename `.env.example` to `.env`. Set the parameters in the .env file
 
 - `GITHUB_ORG` - GitHub organization whose repositories will be investigated. For example, percona contains 193 repositories. 
 
 - `GITHUB_TOKEN` - Your personalized GitHub Token. If left empty, the limit is 60 API requests per hour, which is enough for a test run. If you add token then 5000 requests per hour. You can get a Token in your GitHub profile settings, it's free, instructions at [the link](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
-If you don't want to use any database, leave HOST empty.
+4. Run the Control Panel script
 
-5. Run the script in the terminal
+`go run cmd/web/main.go`
 
-`go run cmd/main/main.go`
+Launch the control panel in your browser (localhost:3000).
 
-The main script will run parallel writes to the three databases.
+5. Run the Dataset loader script
 
-Using MongoDB Compass, pgAdmib, MySQL WorkBench you can explore data and compare databases.
+`go run cmd/dataset/main.go`
 
-## Launching with Docker
+6. Run the Load Generator script
 
-1. Build the Docker Image Use the following command to build the Docker image:
+`go run cmd/load/main.go`
 
-`docker build -t github_app .`
+7. Optional. Uncomment the configuration for PMM and PMM Client in docker-compose.yaml. Run PMM
 
-This command will create an image named `github_app` . The Dockerfile in the main directory of the repository will be used
+`docker compose up -d`
 
-2. Run the Docker Container Use the following command to run the Docker container:
-
-`docker run --name app --env-file .env.docker.example --rm -d  --network=databases_default github_app`
-
-This command will start a container named `app`, use the environment variables specified in the `.env.docker.example` file, remove the container when it stops, run it in detached mode, and connect it to the `databases_default` network (network name will be available after running docker-compose.yaml with databases.)
+Start PMM in your browser (localhost)
 
 ## Launching in Kubernetes
 
-1. Edit the deployment.yaml file. Edit the Secret and ConfigMap sections. Add databases access data and GitHub Token. 
+1. Create a Kubernetes cluster, for example in minikube or GKE. For GKE I use the command 
 
-2. Connect to your MySQL and PostgreSQL databases and run the commands from the data/init folder to create the databases and tables. If you don't want to use any database, leave MONGODB_HOST, PG_HOST, MySQL_HOST empty.
+`gcloud container clusters create demo-app --project percona-product --zone us-central1-a --cluster-version 1.30 --machine-type n1-standard-16 --num-nodes=1`
 
-3. Launch the application
+Doc: [Create Kubernetes cluster on Google Kubernetes Engine (GKE)](https://docs.percona.com/everest/quickstart-guide/gke.html#environment-setup)
+2. Install [Percona Everest](https://docs.percona.com/everest/index.html) to create databases or [Percona Operators](https://docs.percona.com/percona-operators/).
 
-`kubectl apply -f deployment.yaml -n [namespace]`
+Percona Everest documentation:
+- [Install Everest CLI](https://docs.percona.com/everest/install/installEverestCLI.html)
+- [Install Everest](https://docs.percona.com/everest/install/installEverest.html)
 
-Tested with [the Percona Everest](https://docs.percona.com/everest/index.html)
+Create databases if you don't have any.
 
-### Creating your own Docker image to run in Kubernetes
+3. Install the PMM, e.g. with HELM
 
-A [dockerhub](https://hub.docker.com/) account is required. The build will use the Dockerfile in the main directory, edit it if necessary.
+`helm repo add percona https://percona.github.io/percona-helm-charts/`
 
-1. Run a Docker image build and push it to DockerHub
+```
+helm install pmm -n demo \
+--set service.type="LoadBalancer" \
+--set pmmResources.limits.memory="4Gi" \
+--set pmmResources.limits.cpu="2" \
+percona/pmm
+```
 
-`docker buildx build --platform linux/amd64 -t [dockerhub_login]/github_app:[version] --push .`
+Get the administrator password (admin user)
 
-2. Edit deployment.yaml by adding your image. Launch the application
+`kubectl get secret pmm-secret -n demo -o jsonpath='{.data.PMM_ADMIN_PASSWORD}' | base64 --decode`
 
-`kubectl apply -f deployment.yaml -n [namespace]`
+Get a public IP to open PMM in a browser
+
+`kubectl get svc -n demo monitoring-service -o jsonpath="{.status.loadBalancer.ingress[0].ip}"`
+
+4. Create Secrets and ConfigMap for the application.
+
+`kubectl apply -f k8s/config.yaml -n demo`
+
+Check the k8s/config.yaml file. Be sure to set `GITHUB_TOKEN`, which is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
+
+5. Run Valkey database
+
+`kubectl apply -f k8s/valkey.yaml -n demo`
+
+4. Run the Control Panel script
+
+`kubectl apply -f k8s/web-deployment.yaml -n demo`
+
+Run `kubectl -n demo get svc` to get the public IP. Launch the control panel in your browser.
+
+Open the control panel in your browser. Open the Settings tab. Set the connection string to the databases created in Percona Everest. Click the Connect button. 
+
+The first time you connect to MySQL and Postgres, you will need to create a schema and tables. You will see the buttons on the Settings tab. 
+
+5. Run the Dataset loader script
+
+`kubectl apply -f k8s/dataset-deployment.yaml -n demo`
+
+6. Run the Load Generator script.
+
+If one script for all databases. 
+
+`kubectl apply -f k8s/load-deployment.yaml -n demo`
+
+You can run a separate load generator for each database. To distribute resources or scale the load.
+
+- MySQL: `kubectl apply -f k8s/load-mysql-deployment.yaml -n demo`
+- Postgres: `kubectl apply -f k8s/load-postgres-deployment.yaml -n demo`
+- MongoDB `kubectl apply -f k8s/load-mongodb-deployment.yaml -n demo`
+
+You can set the environment variable to determine which database the script will load.
+
+7. Control the load in the control panel. Change queries using the switches. Track the result on PMM dashboards. Scale or change database parameters with Percona Everest. 
+
+Have fun experimenting. 
 
 ### Useful commands
 
-kubectl get pods -n github
+`kubectl get pods -n demo`
 
-kubectl describe pod github-app-857958c877-qp6lz -n github
+`kubectl logs [pod_name] -n demo`
 
-kubectl logs github-app-6499787d79-sdcdx -n github
+`kubectl describe pod [pod_name] -n demo`
 
-## Coming soon
+## How to make changes to the code.
 
-1. Get GitHub Issues and Contributors for each repository 
-2. Web interface to view saved data and reports.
+1. Clone the repository 
+
+2. Run locally using Docker Compose. 
+
+3. Make changes to the code and run scripts for tests. 
+
+4. The repository contains Workflow to build and publish to Docker Hub. You can publish your own versions of containers and run them in Kubernetes. 
+
+5. Send your changes to the project using Pull Request. 
 
 You are invited to make a contribution:
 1. Suggest improvements and create Issues
