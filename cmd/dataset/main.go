@@ -55,6 +55,10 @@ func checkConnectSettings() {
 		app.Config.MongoDB.ConnectionString = mongodb.GetConnectionString(app.Config)
 	}
 
+	if settings.MongoDBDatabase != "" {
+		app.Config.MongoDB.DB = settings.MongoDBDatabase
+	}
+
 	if app.Config.MongoDB.ConnectionString != "" {
 		app.Config.MongoDB.ConnectionStatus = mongodb.CheckMongoDB(app.Config.MongoDB.ConnectionString)
 	}

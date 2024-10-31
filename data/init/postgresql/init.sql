@@ -14,14 +14,14 @@ CREATE TABLE IF NOT EXISTS github.repositories (
 );
 
 CREATE TABLE IF NOT EXISTS github.pulls (
-    id INT NOT NULL,
+    id BIGINT NOT NULL,
     repo VARCHAR(255) NOT NULL,
     data JSON,
     PRIMARY KEY (id, repo)
 );
 
 CREATE TABLE IF NOT EXISTS github.pullsTest (
-    id INT NOT NULL,
+    id BIGINT NOT NULL,
     repo VARCHAR(255) NOT NULL,
     data JSON,
     PRIMARY KEY (id, repo)
