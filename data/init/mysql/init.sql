@@ -6,14 +6,14 @@ CREATE TABLE IF NOT EXISTS repositories (
 );
 
 CREATE TABLE IF NOT EXISTS pulls (
-    id INT NOT NULL,
+    id BIGINT NOT NULL,
     repo VARCHAR(255) NOT NULL,
     data JSON,
     PRIMARY KEY (id, repo)
 );
 
 CREATE TABLE IF NOT EXISTS pullsTest (
-    id INT NOT NULL,
+    id BIGINT NOT NULL,
     repo VARCHAR(255) NOT NULL,
     data JSON,
     PRIMARY KEY (id, repo)
