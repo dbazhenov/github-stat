@@ -1,0 +1,83 @@
+{{- if .Values.separateLoads }}
+  {{- range .Values.loadEnvironments }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Values.name }}-load-{{ .name }}
+spec:
+  replicas: {{ $.Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $.Values.name }}-load-{{ .name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $.Values.name }}-load-{{ .name }}
+    spec:
+      containers:
+      - name: {{ $.Values.name }}-load
+        image: "{{ $.Values.images.load.repository }}:{{ $.Values.images.load.tag }}"
+        imagePullPolicy: {{ $.Values.images.load.pullPolicy }}
+        envFrom:
+        - configMapRef:
+            name: {{ $.Values.name }}-config
+        - secretRef:
+            name: {{ $.Values.name }}-secret
+        env:
+        {{- range .env }}
+          - name: {{ .name }}
+            value: "{{ .value }}"
+        {{- end }}
+        {{- if $.Values.useResourceLimits }}
+        resources:
+          requests:
+            memory: "{{ $.Values.resources.load.requests.memory }}"
+            cpu: "{{ $.Values.resources.load.requests.cpu }}"
+          limits:
+            memory: "{{ $.Values.resources.load.limits.memory }}"
+            cpu: "{{ $.Values.resources.load.limits.cpu }}"
+        {{- end }}
+---
+  {{- end }}
+{{- else }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Values.name }}-load
+spec:
+  replicas: {{ $.Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $.Values.name }}-load
+  template:
+    metadata:
+      labels:
+        app: {{ $.Values.name }}-load
+    spec:
+      containers:
+      - name: {{ $.Values.name }}-load
+        image: "{{ $.Values.images.load.repository }}:{{ $.Values.images.load.tag }}"
+        imagePullPolicy: {{ $.Values.images.load.pullPolicy }}
+        envFrom:
+        - configMapRef:
+            name: {{ $.Values.name }}-config
+        - secretRef:
+            name: {{ $.Values.name }}-secret
+        env:
+        - name: LOAD_MYSQL
+          value: "true"
+        - name: LOAD_POSTGRES
+          value: "true"
+        - name: LOAD_MONGODB
+          value: "true"
+        {{- if $.Values.useResourceLimits }}
+        resources:
+          requests:
+            memory: "{{ $.Values.resources.load.requests.memory }}"
+            cpu: "{{ $.Values.resources.load.requests.cpu }}"
+          limits:
+            memory: "{{ $.Values.resources.load.limits.memory }}"
+            cpu: "{{ $.Values.resources.load.limits.cpu }}"
+        {{- end }}
+---
+{{- end }}

@@ -1,14 +1,14 @@
 version: '3.7'
 services:
 
-  valkey:
-    image: valkey/valkey:8
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-    ports:
-      - "6379:6379"
-    volumes:
-      - valkey_data:/data
+  # valkey:
+  #   image: valkey/valkey:8
+  #   environment:
+  #     - ALLOW_EMPTY_PASSWORD=yes
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - valkey_data:/data
 
   postgres:
     image: percona/percona-distribution-postgresql:16.2-multi
@@ -39,7 +39,7 @@ services:
       - ./data/init/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
       - ./data/init/mongodb/mongod.conf:/etc/mongod.conf:ro
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_USERNAME: databaseAdmin
       MONGO_INITDB_ROOT_PASSWORD: password
       MONGO_INITDB_DATABASE: github
     ports: 

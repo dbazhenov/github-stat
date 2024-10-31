@@ -1,0 +1,119 @@
+name: demo-app
+
+# Secret data
+githubToken: "" # Required parameter https://github.com/settings/tokens
+mongodbPassword: "password"
+pgPassword: "password"
+mysqlPassword: "password"
+valkeyPassword: ""
+
+# Configurations for the application
+githubOrg: "percona"
+loadMySQL: "true"
+loadPostgres: "true"
+loadMongoDB: "true"
+valkeyAddr: "demo-app-valkey-service"
+valkeyPort: "6379"
+valkeyDB: "0"
+valkeyAllowEmptyPassword: "yes"
+mongodbUser: "databaseAdmin"
+mongodbDB: "dataset"
+mongodbHost: "localhost"
+mongodbPort: "27017"
+pgUser: "postgres"
+pgDB: "dataset"
+pgHost: "localhost"
+pgPort: "5432"
+mysqlUser: "root"
+mysqlDB: "dataset"
+mysqlHost: "localhost"
+mysqlPort: "3306"
+delayMinutes: "3"
+debug: "true"
+
+controlPanelService:
+  type: LoadBalancer  # LoadBalancer or NodePort 
+  nodePort: 30001
+  port: 80
+  targetPort: 3001 # controlPanelPort - CONTROL_PANEL_PORT
+
+replicaCount: 1
+
+images:
+  web:
+    repository: dbazhenov/demo_app_web
+    pullPolicy: Always
+    tag: latest
+  dataset:
+    repository: dbazhenov/demo_app_dataset
+    pullPolicy: Always
+    tag: latest
+  load:
+    repository: dbazhenov/demo_app_load
+    pullPolicy: Always
+    tag: latest
+  valkey:
+    repository: valkey/valkey
+    pullPolicy: Always
+    tag: "8"
+
+useResourceLimits: false
+
+resources:
+  web:
+    requests:
+      memory: "1Gi"
+      cpu: "600m"
+    limits:
+      memory: "1Gi"
+      cpu: "600m"
+  dataset:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
+  load:
+    requests:
+      memory: "1Gi"
+      cpu: "1"
+    limits:
+      memory: "1Gi"
+      cpu: "1"
+  valkey:
+    requests:
+      memory: "1Gi"
+      cpu: "600m"
+    limits:
+      memory: "1Gi"
+      cpu: "600m"
+
+# Configurations for different instances
+separateLoads: true
+loadEnvironments:
+  - name: mysql
+    env:
+      - name: LOAD_MYSQL
+        value: "true"
+      - name: LOAD_POSTGRES
+        value: "false"
+      - name: LOAD_MONGODB
+        value: "false"
+  - name: postgres
+    env:
+      - name: LOAD_MYSQL
+        value: "false"
+      - name: LOAD_POSTGRES
+        value: "true"
+      - name: LOAD_MONGODB
+        value: "false"
+  - name: mongodb
+    env:
+      - name: LOAD_MYSQL
+        value: "false"
+      - name: LOAD_POSTGRES
+        value: "false"
+      - name: LOAD_MONGODB
+        value: "true"
+

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.name }}-valkey-service
+spec:
+  selector:
+    app: {{ .Values.name }}-valkey
+  ports:
+    - protocol: TCP
+      port: {{ .Values.valkeyPort | int }}
+      targetPort: {{ .Values.valkeyPort | int }}
+  type: ClusterIP

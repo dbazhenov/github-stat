@@ -21,21 +21,21 @@ var EnvVars app.EnvVars
 
 // Global variable to store the configuration. Default values can be set.
 var LoadConfig = app.Load{
-	MySQLConnections:      1,
-	PostgreSQLConnections: 1,
-	MongoDBConnections:    1,
-	MySQLSwitch1:          true,
-	MySQLSwitch2:          true,
-	MySQLSwitch3:          true,
-	MySQLSwitch4:          true,
-	PostgresSwitch1:       true,
-	PostgresSwitch2:       true,
-	PostgresSwitch3:       true,
-	PostgresSwitch4:       true,
-	MongoDBSwitch1:        true,
-	MongoDBSwitch2:        true,
-	MongoDBSwitch3:        true,
-	MongoDBSwitch4:        true,
+	MySQLConnections:      0,
+	PostgreSQLConnections: 0,
+	MongoDBConnections:    0,
+	MySQLSwitch1:          false,
+	MySQLSwitch2:          false,
+	MySQLSwitch3:          false,
+	MySQLSwitch4:          false,
+	PostgresSwitch1:       false,
+	PostgresSwitch2:       false,
+	PostgresSwitch3:       false,
+	PostgresSwitch4:       false,
+	MongoDBSwitch1:        false,
+	MongoDBSwitch2:        false,
+	MongoDBSwitch3:        false,
+	MongoDBSwitch4:        false,
 }
 
 func main() {

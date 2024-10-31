@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.name }}-config
+data:
+  GITHUB_ORG: "{{ .Values.githubOrg }}"
+  CONTROL_PANEL_PORT: "{{ .Values.controlPanelService.targetPort }}"
+  LOAD_MYSQL: "{{ .Values.loadMySQL }}"
+  LOAD_POSTGRES: "{{ .Values.loadPostgres }}"
+  LOAD_MONGODB: "{{ .Values.loadMongoDB }}"
+  VALKEY_ADDR: "{{ .Values.valkeyAddr }}"
+  VALKEY_PORT: "{{ .Values.valkeyPort }}"
+  VALKEY_DB: "{{ .Values.valkeyDB }}"
+  MONGODB_USER: "{{ .Values.mongodbUser }}"
+  MONGODB_DB: "{{ .Values.mongodbDB }}"
+  MONGODB_HOST: "{{ .Values.mongodbHost }}"
+  MONGODB_PORT: "{{ .Values.mongodbPort }}"
+  PG_USER: "{{ .Values.pgUser }}"
+  PG_DB: "{{ .Values.pgDB }}"
+  PG_HOST: "{{ .Values.pgHost }}"
+  PG_PORT: "{{ .Values.pgPort }}"
+  MYSQL_USER: "{{ .Values.mysqlUser }}"
+  MYSQL_DB: "{{ .Values.mysqlDB }}"
+  MYSQL_HOST: "{{ .Values.mysqlHost }}"
+  MYSQL_PORT: "{{ .Values.mysqlPort }}"
+  DELAY_MINUTES: "{{ .Values.delayMinutes }}"
+  DEBUG: "{{ .Values.debug }}"

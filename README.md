@@ -102,17 +102,41 @@ Get a public IP to open PMM in a browser
 
 `kubectl get svc -n demo monitoring-service -o jsonpath="{.status.loadBalancer.ingress[0].ip}"`
 
-4. Create Secrets and ConfigMap for the application.
+Next, you can run the Demo application, either manually or with Helm.
+
+### Running Demo application using HELM
+
+1. Set the HELM parameters in the ./k8s/demo-app/values.yaml file:
+
+`githubToken` -  is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
+
+`separateLoads` - If true, separate pods for each database will be started for the load.
+
+`useResourceLimits` - if true, resource limits will be set for the resource consumption
+
+`controlPanelService.type` - LoadBalancer for the public address of the dashboard. NodePort for developing locally.
+
+2. Launch the application
+
+`helm install demo-app ./k8s/demo-app -n demo`
+
+3. Run `kubectl -n demo get svc` to get the public IP for demo-app-web-service. Launch the control panel in your browser.
+
+4. Open the Settings tab on the control panel and set the parameters for connecting to the databases you created in Percona Everest or with Percona Operators.
+
+### Running Demo application manually
+
+1. Create Secrets and ConfigMap for the application.
 
 `kubectl apply -f k8s/config.yaml -n demo`
 
 Check the k8s/config.yaml file. Be sure to set `GITHUB_TOKEN`, which is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
 
-5. Run Valkey database
+2. Run Valkey database
 
 `kubectl apply -f k8s/valkey.yaml -n demo`
 
-4. Run the Control Panel script
+3. Run the Control Panel script
 
 `kubectl apply -f k8s/web-deployment.yaml -n demo`
 
@@ -122,11 +146,11 @@ Open the control panel in your browser. Open the Settings tab. Set the connectio
 
 The first time you connect to MySQL and Postgres, you will need to create a schema and tables. You will see the buttons on the Settings tab. 
 
-5. Run the Dataset loader script
+4. Run the Dataset loader script
 
 `kubectl apply -f k8s/dataset-deployment.yaml -n demo`
 
-6. Run the Load Generator script.
+5. Run the Load Generator script.
 
 If one script for all databases. 
 
@@ -140,7 +164,7 @@ You can run a separate load generator for each database. To distribute resources
 
 You can set the environment variable to determine which database the script will load.
 
-7. Control the load in the control panel. Change queries using the switches. Track the result on PMM dashboards. Scale or change database parameters with Percona Everest. 
+6. Control the load in the control panel. Change queries using the switches. Track the result on PMM dashboards. Scale or change database parameters with Percona Everest. 
 
 Have fun experimenting. 
 

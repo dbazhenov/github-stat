@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}-valkey
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}-valkey
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}-valkey
+    spec:
+      containers:
+      - name: valkey
+        image: "{{ .Values.images.valkey.repository }}:{{ .Values.images.valkey.tag }}"
+        imagePullPolicy: {{ .Values.images.valkey.pullPolicy }}
+        env:
+        - name: ALLOW_EMPTY_PASSWORD
+          value: "{{ .Values.valkeyAllowEmptyPassword }}"
+        {{- if $.Values.useResourceLimits }}
+        resources:
+          requests:
+            memory: "{{ .Values.resources.valkey.requests.memory }}"
+            cpu: "{{ .Values.resources.valkey.requests.cpu }}"
+          limits:
+            memory: "{{ .Values.resources.valkey.limits.memory }}"
+            cpu: "{{ .Values.resources.valkey.limits.cpu }}"
+        {{- end }}
+        ports:
+        - containerPort: {{ .Values.valkeyPort | int }}
+        volumeMounts:
+        - name: {{ .Values.name }}-valkey-data
+          mountPath: /data
+      volumes:
+      - name: {{ .Values.name }}-valkey-data
+        persistentVolumeClaim:
+          claimName: {{ .Values.name }}-valkey-pvc

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}-dataset
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}-dataset
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}-dataset
+    spec:
+      containers:
+      - name: {{ .Values.name }}-dataset
+        image: "{{ .Values.images.dataset.repository }}:{{ .Values.images.dataset.tag }}"
+        imagePullPolicy: {{ .Values.images.dataset.pullPolicy }}
+        envFrom:
+        - configMapRef:
+            name: {{ .Values.name }}-config
+        - secretRef:
+            name: {{ .Values.name }}-secret
+        {{- if $.Values.useResourceLimits }}
+        resources:
+          requests:
+            memory: "{{ .Values.resources.dataset.requests.memory }}"
+            cpu: "{{ .Values.resources.dataset.requests.cpu }}"
+          limits:
+            memory: "{{ .Values.resources.dataset.limits.memory }}"
+            cpu: "{{ .Values.resources.dataset.limits.cpu }}"
+        {{- end }}

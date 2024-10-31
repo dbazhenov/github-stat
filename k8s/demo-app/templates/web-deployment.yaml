@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}-web
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}-web
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}-web
+    spec:
+      containers:
+      - name: {{ .Values.name }}-web
+        image: "{{ .Values.images.web.repository }}:{{ .Values.images.web.tag }}"
+        imagePullPolicy: {{ .Values.images.web.pullPolicy }}
+        envFrom:
+        - configMapRef:
+            name: {{ .Values.name }}-config
+        - secretRef:
+            name: {{ .Values.name }}-secret
+        {{- if $.Values.useResourceLimits }}
+        resources:
+          requests:
+            memory: "{{ .Values.resources.web.requests.memory }}"
+            cpu: "{{ .Values.resources.web.requests.cpu }}"
+          limits:
+            memory: "{{ .Values.resources.web.limits.memory }}"
+            cpu: "{{ .Values.resources.web.limits.cpu }}"
+        {{- end }}
