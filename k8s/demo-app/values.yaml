@@ -76,11 +76,11 @@ resources:
       cpu: "1"
   load:
     requests:
-      memory: "1Gi"
-      cpu: "1"
+      memory: "2Gi"
+      cpu: "2"
     limits:
-      memory: "1Gi"
-      cpu: "1"
+      memory: "2Gi"
+      cpu: "2"
   valkey:
     requests:
       memory: "1Gi"

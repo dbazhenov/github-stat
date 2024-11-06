@@ -1,14 +1,19 @@
 \c postgres;
 CREATE EXTENSION pg_stat_monitor;
 
-CREATE DATABASE github;
-\c github;
+CREATE DATABASE dataset;
+\c dataset;
 
 CREATE EXTENSION pg_stat_monitor;
 
 CREATE SCHEMA IF NOT EXISTS github;
 
 CREATE TABLE IF NOT EXISTS github.repositories (
+    id SERIAL PRIMARY KEY,
+    data JSONB
+);
+
+CREATE TABLE IF NOT EXISTS github.repositoriesTest (
     id SERIAL PRIMARY KEY,
     data JSONB
 );

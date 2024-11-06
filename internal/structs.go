@@ -16,6 +16,9 @@ type Load struct {
 	MongoDBSwitch2        bool `json:"mongodb_switch_2"`
 	MongoDBSwitch3        bool `json:"mongodb_switch_3"`
 	MongoDBSwitch4        bool `json:"mongodb_switch_4"`
+	MySQLSleep            int  `json:"mysql_sleep"`
+	MongoDBSleep          int  `json:"mongodb_sleep"`
+	PostgresSleep         int  `json:"postgres_sleep"`
 }
 
 type Connections struct {

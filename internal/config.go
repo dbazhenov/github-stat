@@ -21,6 +21,7 @@ type EnvVars struct {
 
 type ConfigApp struct {
 	DelayMinutes int
+	LoadSleep    int
 	Debug        bool
 }
 
@@ -124,7 +125,6 @@ func GetEnvVars() (EnvVars, error) {
 	envVars.LoadGenerator.Postgres, _ = parseBool("LOAD_POSTGRES")
 	envVars.LoadGenerator.MongoDB, _ = parseBool("LOAD_MONGODB")
 
-	envVars.ControlPanel.Host = os.Getenv("CONTROL_PANEL_HOST")
 	envVars.ControlPanel.Port = os.Getenv("CONTROL_PANEL_PORT")
 
 	envVars.App.DelayMinutes, _ = parseInt("DELAY_MINUTES")
