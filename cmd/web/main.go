@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -69,7 +70,8 @@ func handleRequest() {
 	http.HandleFunc("/", index)
 	http.HandleFunc("/config", config)
 	http.HandleFunc("/start", start)
-	http.HandleFunc("/settings", settings)
+	http.HandleFunc("/settings", settingsDBConnections)
+	http.HandleFunc("/settings_load", settingsLoad)
 	http.HandleFunc("/dataset", dataset)
 
 	port := app.Config.ControlPanel.Port
@@ -177,6 +179,12 @@ func config(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		loadSettingFromValkey, _ := valkey.LoadControlPanelConfigFromValkey()
+
+		load.MongoDBSleep = loadSettingFromValkey.MongoDBSleep
+		load.MySQLSleep = loadSettingFromValkey.MySQLSleep
+		load.PostgresSleep = loadSettingFromValkey.PostgresSleep
+
 		LoadConfig = load
 
 		err = valkey.SaveConfigToValkey(load)
@@ -211,7 +219,7 @@ func start(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func settings(w http.ResponseWriter, r *http.Request) {
+func settingsDBConnections(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 
 		mysqlConnectionString := r.FormValue("mysqlConnectionString")
@@ -314,6 +322,58 @@ func settings(w http.ResponseWriter, r *http.Request) {
 		}
 		if mysqlCreateSchema {
 			data["mysql_create_schema"] = mysqlCreateSchema
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(data)
+	} else {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+	}
+}
+func settingsLoad(w http.ResponseWriter, r *http.Request) {
+
+	if r.Method == http.MethodPost {
+		mysqlSleepStr := r.FormValue("mysqlSleep")
+		mongodbSleepStr := r.FormValue("mongodbSleep")
+		postgresqlSleepStr := r.FormValue("postgresqlSleep")
+
+		mysqlSleep, err := strconv.Atoi(mysqlSleepStr)
+		if err != nil {
+			http.Error(w, "Invalid value for MySQL Sleep", http.StatusBadRequest)
+			return
+		}
+
+		mongodbSleep, err := strconv.Atoi(mongodbSleepStr)
+		if err != nil {
+			http.Error(w, "Invalid value for MongoDB Sleep", http.StatusBadRequest)
+			return
+		}
+
+		postgresqlSleep, err := strconv.Atoi(postgresqlSleepStr)
+		if err != nil {
+			http.Error(w, "Invalid value for PostgreSQL Sleep", http.StatusBadRequest)
+			return
+		}
+
+		loadSettingFromValkey, _ := valkey.LoadControlPanelConfigFromValkey()
+
+		loadSettingFromValkey.MySQLSleep = mysqlSleep
+		loadSettingFromValkey.PostgresSleep = postgresqlSleep
+		loadSettingFromValkey.MongoDBSleep = mongodbSleep
+
+		LoadConfig = loadSettingFromValkey
+
+		err = valkey.SaveConfigToValkey(loadSettingFromValkey)
+		if err != nil {
+			log.Printf("Error: Valkey: Settings Load: %s", err)
+		} else {
+			log.Printf("Valkey: Settings Load: Success: %v", loadSettingFromValkey)
+		}
+
+		data := map[string]interface{}{
+			"mysql_sleep":    mysqlSleep,
+			"mongodb_sleep":  mongodbSleep,
+			"postgres_sleep": postgresqlSleep,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

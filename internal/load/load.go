@@ -19,19 +19,40 @@ func MySQLSwitch1(db *sql.DB, id int) {
 	repos_with_pulls, err := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM repositories;")
 
 	if err != nil {
-		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
-	} else {
+		log.Printf("Error: MySQL: MySQLSwitch1: goroutine: %d: message: %s", id, err)
+	} else if len(repos_with_pulls) > 0 {
 		randomIndex := rand.Intn(len(repos_with_pulls))
 		randomRepo := repos_with_pulls[randomIndex]
 
 		query := fmt.Sprintf("SELECT data FROM repositories WHERE id = %d;", randomRepo)
 
-		_, err := mysql.SelectString(db, query)
+		data, err := mysql.SelectString(db, query)
 
 		if err != nil {
-			log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
+			log.Printf("Error: MySQL: MySQLSwitch1: goroutine: %d: message: %s", id, err)
 		}
-		// log.Printf("MySQL: Ok: goroutine: %d: message: %d", id, randomRepo)
+
+		query = fmt.Sprintf("SELECT COUNT(*) FROM repositoriesTest WHERE id = %d;", randomRepo)
+
+		count, _ := mysql.SelectInt(db, query)
+		if count > 0 {
+			_, err = db.Exec("UPDATE repositoriesTest SET data = ? WHERE id = ?", data, randomRepo)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch1: goroutine: %d: message: %s", id, err)
+			}
+		} else {
+			_, err = db.Exec("INSERT INTO repositoriesTest (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?", randomRepo, data, data)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch1: goroutine: %d: message: %s", id, err)
+			}
+		}
+
+		if id%2 != 0 {
+			_, err = db.Exec("DELETE FROM repositoriesTest WHERE id = ?", randomRepo)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch1: goroutine: %d: message: %s", id, err)
+			}
+		}
 	}
 
 }
@@ -41,30 +62,73 @@ func MySQLSwitch2(db *sql.DB, id int) {
 	uniq_pulls_ids, err := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM pulls;")
 
 	if err != nil {
-		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
-	} else {
+		log.Printf("Error: MySQL: MySQLSwitch2: 1: goroutine: %d: message: %s", id, err)
+	} else if len(uniq_pulls_ids) > 0 {
 		randomId := rand.Intn(len(uniq_pulls_ids))
 		randomPull := uniq_pulls_ids[randomId]
 
-		query := fmt.Sprintf("SELECT data FROM pulls WHERE id = %d;", randomPull)
+		query := fmt.Sprintf("SELECT repo, data FROM pulls WHERE id = %d;", randomPull)
 
-		pull, err := mysql.SelectPulls(db, query)
-		if err != nil {
-			log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
+		row := db.QueryRow(query)
+
+		var repo, data string
+		if err := row.Scan(&repo, &data); err != nil {
+			log.Printf("Error: MySQL: MySQLSwitch2: 2: goroutine: %d: message: %s", id, err)
 		}
 
-		err = mysql.InsertPulls(db, pull, "pullsTest")
-		if err != nil {
-			log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
+		query = fmt.Sprintf("SELECT COUNT(*) FROM pullsTest WHERE id = %d;", randomPull)
+
+		count, _ := mysql.SelectInt(db, query)
+		if count > 0 {
+			_, err = db.Exec("UPDATE pullsTest SET data = ? WHERE id = ?", data, randomPull)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch2: 3: goroutine: %d: message: %s", id, err)
+			}
+		} else {
+			_, err = db.Exec("INSERT INTO pullsTest (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?", randomPull, repo, data, data)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch2: 4: goroutine: %d: message: %s", id, err)
+			}
 		}
+
+		_, err = db.Exec("INSERT INTO pulls (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?", randomPull, repo, data, data)
+		if err != nil {
+			log.Printf("Error: MySQL: MySQLSwitch2: 5: goroutine: %d: message: %s", id, err)
+		}
+
+		if id%2 != 0 {
+			_, err = db.Exec("DELETE FROM pullsTest WHERE id = ?", randomPull)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch2: 6: goroutine: %d: message: %s", id, err)
+			}
+		}
+
 	}
 }
 
 func MySQLSwitch3(db *sql.DB, id int) {
 
-	_, err := mysql.SelectString(db, `SELECT repo FROM pulls ORDER BY RAND() LIMIT 1;`)
-	if err != nil {
-		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
+	currentTime := time.Now().UnixNano() / int64(time.Millisecond)
+
+	if id%2 != 0 {
+
+		if currentTime%10 == 0 || currentTime%5 == 0 {
+
+			repo, err := mysql.SelectString(db, `SELECT repo FROM (SELECT DISTINCT repo FROM pulls) AS uniq_repos ORDER BY RAND() LIMIT 1`)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch3: goroutine: %d: message: %s", id, err)
+			}
+
+			log.Printf("MySQL: MySQLSwitch3: goroutine: %d: repo: %s", id, repo)
+
+			query := fmt.Sprintf("SELECT data FROM pulls WHERE repo = '%s' ORDER BY id ASC LIMIT 10", repo)
+			pulls, err := mysql.SelectListOfStrings(db, query)
+			if err != nil {
+				log.Printf("Error: MySQL: MySQLSwitch3: goroutine: %d: message: %s", id, err)
+			}
+			log.Printf("MySQL: MySQLSwitch3: goroutine: %d: pulls_count: %d", id, len(pulls))
+		}
+
 	}
 
 }

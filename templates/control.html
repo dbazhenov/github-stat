@@ -7,24 +7,26 @@
       <h3>MySQL</h3>
       <div class="form-group mt-3">
         <label for="mysqlConnectionsRange">Parallel connections to the database</label>
-        <input type="range" class="form-control-range w-100" id="mysqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.MySQLConnections}}">
-        <span id="mysqlConnectionsValue">{{.LoadConfig.MySQLConnections}}</span>
+        <div class="range-container mb-3 mt-1" style="position: relative; width: 100%;">
+          <input type="range" class="form-control-range w-100" id="mysqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.MySQLConnections}}">
+          <span id="mysqlConnectionsValue" class="range-value">{{.LoadConfig.MySQLConnections}}</span>
+        </div>
       </div>
       <div class="row">
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch1" role="switch" {{if .LoadConfig.MySQLSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="mysqlSwitch1">Select (300 rows)</label>
+            <label class="form-check-label" for="mysqlSwitch1">Repositories (Create, Read, Update, Delete)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch2" role="switch" {{if .LoadConfig.MySQLSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="mysqlSwitch2">Select and Insert (40k rows)</label>
+            <label class="form-check-label" for="mysqlSwitch2">Pull Requests (Create, Read, Update, Delete)</label>
           </div>
         </div>
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch3" role="switch" {{if .LoadConfig.MySQLSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mysqlSwitch3">Bad Switch (Select with RAND in SQL)</label>
+            <label class="form-check-label" for="mysqlSwitch3">Bad Switch (SELECT by field with no index)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch4" role="switch" {{if .LoadConfig.MySQLSwitch4}}checked{{end}} style="color: red;">
@@ -41,8 +43,10 @@
       <h3>PostgreSQL</h3>
       <div class="form-group mt-3">
         <label for="postgresqlConnectionsRange">Parallel connections to the database</label>
-        <input type="range" class="form-control-range w-100" id="postgresqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.PostgreSQLConnections}}">
-        <span id="postgresqlConnectionsValue">{{.LoadConfig.PostgreSQLConnections}}</span>
+        <div class="range-container" style="position: relative; width: 100%;">
+          <input type="range" class="form-control-range w-100" id="postgresqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.PostgreSQLConnections}}">
+          <span id="postgresqlConnectionsValue" class="range-value">{{.LoadConfig.PostgreSQLConnections}}</span>
+        </div>
       </div>
       <div class="row">
         <div class="col-md-6">
@@ -75,8 +79,10 @@
       <h3>MongoDB</h3>
       <div class="form-group mt-3">
         <label for="mongodbConnectionsRange">Parallel connections to the database</label>
-        <input type="range" class="form-control-range w-100" id="mongodbConnectionsRange" min="0" max="100" value="{{.LoadConfig.MongoDBConnections}}">
-        <span id="mongodbConnectionsValue">{{.LoadConfig.MongoDBConnections}}</span>
+        <div class="range-container mb-3" style="position: relative; width: 100%;">
+          <input type="range" class="form-control-range w-100" id="mongodbConnectionsRange" min="0" max="100" value="{{.LoadConfig.MongoDBConnections}}">
+          <span id="mongodbConnectionsValue" class="range-value">{{.LoadConfig.MongoDBConnections}}</span>
+        </div>
       </div>
       <div class="row">
         <div class="col-md-6">
@@ -106,3 +112,4 @@
 </div>
 
 {{ end }}
+

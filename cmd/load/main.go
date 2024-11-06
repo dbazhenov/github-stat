@@ -36,6 +36,9 @@ var LoadConfig = app.Load{
 	MongoDBSwitch2:        false,
 	MongoDBSwitch3:        false,
 	MongoDBSwitch4:        false,
+	MySQLSleep:            0,
+	MongoDBSleep:          0,
+	PostgresSleep:         0,
 }
 
 func main() {
@@ -228,6 +231,9 @@ func runMySQL(ctx context.Context, id int) {
 				load.MySQLSwitch4(db, id)
 			}
 
+			if LoadConfig.MySQLSleep > 0 {
+				time.Sleep(time.Duration(LoadConfig.MySQLSleep) * time.Millisecond)
+			}
 		}
 	}
 }
@@ -264,6 +270,9 @@ func runPostgreSQL(ctx context.Context, id int) {
 				load.PostgresSwitch4(db, id)
 			}
 
+			if LoadConfig.PostgresSleep > 0 {
+				time.Sleep(time.Duration(LoadConfig.PostgresSleep) * time.Millisecond)
+			}
 		}
 	}
 }
@@ -304,6 +313,9 @@ func runMongoDB(ctx context.Context, id int) {
 				load.MongoDBSwitch4(client, db, id)
 			}
 
+			if LoadConfig.MongoDBSleep > 0 {
+				time.Sleep(time.Duration(LoadConfig.MongoDBSleep) * time.Millisecond)
+			}
 		}
 	}
 
