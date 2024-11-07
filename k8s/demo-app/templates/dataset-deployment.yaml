@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: {{ .Values.name }}-dataset
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 0
   selector:
     matchLabels:
       app: {{ .Values.name }}-dataset

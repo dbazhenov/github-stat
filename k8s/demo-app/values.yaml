@@ -28,8 +28,8 @@ mysqlUser: "root"
 mysqlDB: "dataset"
 mysqlHost: "localhost"
 mysqlPort: "3306"
-delayMinutes: "3"
-debug: "true"
+delayMinutes: "10"
+debug: "false"
 
 controlPanelService:
   type: LoadBalancer  # LoadBalancer or NodePort 
@@ -37,7 +37,9 @@ controlPanelService:
   port: 80
   targetPort: 3001 # controlPanelPort - CONTROL_PANEL_PORT
 
-replicaCount: 1
+replicaCount:
+  dataset: 1
+  load: 1
 
 images:
   web:
@@ -57,7 +59,7 @@ images:
     pullPolicy: Always
     tag: "8"
 
-useResourceLimits: false
+useResourceLimits: true
 
 resources:
   web:
@@ -69,10 +71,10 @@ resources:
       cpu: "600m"
   dataset:
     requests:
-      memory: "2Gi"
+      memory: "4Gi"
       cpu: "1"
     limits:
-      memory: "2Gi"
+      memory: "4Gi"
       cpu: "1"
   load:
     requests:
@@ -90,7 +92,7 @@ resources:
       cpu: "600m"
 
 # Configurations for different instances
-separateLoads: true
+separateLoads: false
 loadEnvironments:
   - name: mysql
     env:

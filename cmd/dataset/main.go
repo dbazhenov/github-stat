@@ -33,7 +33,7 @@ func main() {
 	defer valkey.Valkey.Close()
 
 	for {
-
+		log.Printf("Dataset: Config: %v", app.Config)
 		checkConnectSettings()
 
 		// The main process of getting data from GitHub API and store it into MySQL, PostgreSQL, MongoDB databases.
@@ -42,6 +42,7 @@ func main() {
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
 		helperSleep(app.Config)
 		app.InitConfig()
+
 	}
 }
 

@@ -391,119 +391,124 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 	}, 3)
 
 	// MySQL
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		my, err := mysql.ConnectByString(app.Config.MySQL.ConnectionString)
-		if err != nil {
-			log.Printf("Error: Dataset: MySQL: Connect: %s", err)
-			return
-		}
-		defer my.Close()
+	if app.Config.MySQL.ConnectionStatus == "Connected" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			my, err := mysql.ConnectByString(app.Config.MySQL.ConnectionString)
+			if err != nil {
+				log.Printf("Error: Dataset: MySQL: Connect: %s", err)
+				return
+			}
+			defer my.Close()
 
-		dbName := ""
-		err = my.QueryRow(`SELECT DATABASE();`).Scan(&dbName)
-		if err != nil {
-			log.Printf("Error: Dataset: MySQL: Getting MySQL DB name: %v", err)
-		}
+			dbName := ""
+			err = my.QueryRow(`SELECT DATABASE();`).Scan(&dbName)
+			if err != nil {
+				log.Printf("Error: Dataset: MySQL: Getting MySQL DB name: %v", err)
+			}
 
-		mysql_pulls, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
-		if err != nil {
-			log.Printf("Error: Dataset: MySQL: Pulls: %v", err)
-		}
-		mysql_repositories, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
-		if err != nil {
-			log.Printf("Error: Dataset: MySQL: Repos: %v", err)
-		}
-		results <- struct {
-			dbType string
-			data   app.Database
-		}{
-			dbType: "mysql",
-			data: app.Database{
-				DBName:       dbName,
-				Repositories: mysql_repositories,
-				PullRequests: mysql_pulls,
-			},
-		}
-	}()
+			mysql_pulls, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
+			if err != nil {
+				log.Printf("Error: Dataset: MySQL: Pulls: %v", err)
+			}
+			mysql_repositories, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
+			if err != nil {
+				log.Printf("Error: Dataset: MySQL: Repos: %v", err)
+			}
+			results <- struct {
+				dbType string
+				data   app.Database
+			}{
+				dbType: "mysql",
+				data: app.Database{
+					DBName:       dbName,
+					Repositories: mysql_repositories,
+					PullRequests: mysql_pulls,
+				},
+			}
+		}()
+	}
 
 	// PostgreSQL
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		pg, err := postgres.ConnectByString(app.Config.Postgres.ConnectionString)
-		if err != nil {
-			log.Printf("Error: Dataset: Postgres: Connect: %s", err)
-			return
-		}
-		defer pg.Close()
+	if app.Config.Postgres.ConnectionStatus == "Connected" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pg, err := postgres.ConnectByString(app.Config.Postgres.ConnectionString)
+			if err != nil {
+				log.Printf("Error: Dataset: Postgres: Connect: %s", err)
+				return
+			}
+			defer pg.Close()
 
-		dbName := ""
-		err = pg.QueryRow(`SELECT current_database();`).Scan(&dbName)
-		if err != nil {
-			log.Printf("Error: Dataset: Postgres: Getting PostgreSQL DB name: %v", err)
-		}
+			dbName := ""
+			err = pg.QueryRow(`SELECT current_database();`).Scan(&dbName)
+			if err != nil {
+				log.Printf("Error: Dataset: Postgres: Getting PostgreSQL DB name: %v", err)
+			}
 
-		pg_pulls, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
-		if err != nil {
-			log.Printf("Error: Dataset: Postgres: Pulls: %v", err)
-		}
-		pg_repositories, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
-		if err != nil {
-			log.Printf("Error: Dataset: Postgres: Repos: %v", err)
-		}
-		results <- struct {
-			dbType string
-			data   app.Database
-		}{
-			dbType: "postgresql",
-			data: app.Database{
-				DBName:       dbName,
-				Repositories: pg_repositories,
-				PullRequests: pg_pulls,
-			},
-		}
-	}()
-
+			pg_pulls, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
+			if err != nil {
+				log.Printf("Error: Dataset: Postgres: Pulls: %v", err)
+			}
+			pg_repositories, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
+			if err != nil {
+				log.Printf("Error: Dataset: Postgres: Repos: %v", err)
+			}
+			results <- struct {
+				dbType string
+				data   app.Database
+			}{
+				dbType: "postgresql",
+				data: app.Database{
+					DBName:       dbName,
+					Repositories: pg_repositories,
+					PullRequests: pg_pulls,
+				},
+			}
+		}()
+	}
 	// MongoDB
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		mongo_ctx := context.Background()
-		mongo, err := mongodb.ConnectByString(app.Config.MongoDB.ConnectionString, mongo_ctx)
-		if err != nil {
-			log.Printf("Error: Dataset: MongoDB: Connect: %s", err)
-			return
-		}
-		defer mongo.Disconnect(mongo_ctx)
+	if app.Config.MongoDB.ConnectionStatus == "Connected" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mongo_ctx := context.Background()
+			mongo, err := mongodb.ConnectByString(app.Config.MongoDB.ConnectionString, mongo_ctx)
+			if err != nil {
+				log.Printf("Error: Dataset: MongoDB: Connect: %s", err)
+				return
+			}
+			defer mongo.Disconnect(mongo_ctx)
 
-		dbName := app.Config.MongoDB.DB
+			dbName := app.Config.MongoDB.DB
 
-		mongo_pulls, err := mongodb.CountDocuments(mongo, dbName, "pulls", bson.D{})
-		if err != nil {
-			log.Printf("Error: Dataset: MongoDB: Count Pulls: %s", err)
-			mongo_pulls = 0
-		}
+			mongo_pulls, err := mongodb.CountDocuments(mongo, dbName, "pulls", bson.D{})
+			if err != nil {
+				log.Printf("Error: Dataset: MongoDB: Count Pulls: %s", err)
+				mongo_pulls = 0
+			}
 
-		mongo_repositories, err := mongodb.CountDocuments(mongo, dbName, "repositories", bson.D{})
-		if err != nil {
-			log.Printf("Error: Dataset: MongoDB: Count Repos: %s", err)
-			mongo_repositories = 0
-		}
+			mongo_repositories, err := mongodb.CountDocuments(mongo, dbName, "repositories", bson.D{})
+			if err != nil {
+				log.Printf("Error: Dataset: MongoDB: Count Repos: %s", err)
+				mongo_repositories = 0
+			}
 
-		results <- struct {
-			dbType string
-			data   app.Database
-		}{
-			dbType: "mongodb",
-			data: app.Database{
-				DBName:       dbName,
-				Repositories: int(mongo_repositories),
-				PullRequests: int(mongo_pulls),
-			},
-		}
-	}()
+			results <- struct {
+				dbType string
+				data   app.Database
+			}{
+				dbType: "mongodb",
+				data: app.Database{
+					DBName:       dbName,
+					Repositories: int(mongo_repositories),
+					PullRequests: int(mongo_pulls),
+				},
+			}
+		}()
+	}
 
 	go func() {
 		wg.Wait()
