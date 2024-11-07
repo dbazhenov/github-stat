@@ -5,7 +5,7 @@ kind: Deployment
 metadata:
   name: {{ $.Values.name }}-load-{{ .name }}
 spec:
-  replicas: {{ $.Values.replicaCount }}
+  replicas: {{ .Values.replicaCount.load }}
   selector:
     matchLabels:
       app: {{ $.Values.name }}-load-{{ .name }}

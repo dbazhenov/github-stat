@@ -108,9 +108,9 @@ func MySQLSwitch2(db *sql.DB, id int) {
 
 func MySQLSwitch3(db *sql.DB, id int) {
 
-	currentTime := time.Now().UnixNano() / int64(time.Millisecond)
-
 	if id%2 != 0 {
+
+		currentTime := time.Now().UnixNano() / int64(time.Millisecond)
 
 		if currentTime%10 == 0 || currentTime%5 == 0 {
 
@@ -135,15 +135,24 @@ func MySQLSwitch3(db *sql.DB, id int) {
 
 func MySQLSwitch4(db *sql.DB, id int) {
 
-	query := `
-		SELECT data FROM pulls 
-		WHERE STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(data, '$.created_at')), '%Y-%m-%dT%H:%i:%sZ') >= NOW() - INTERVAL 3 MONTH 
-		LIMIT 10;
-	`
-	_, err := mysql.SelectPulls(db, query)
-	if err != nil {
-		log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
+	if id%2 != 0 {
+
+		currentTime := time.Now().UnixNano() / int64(time.Millisecond)
+
+		if currentTime%10 == 0 || currentTime%5 == 0 {
+
+			query := `
+			SELECT data FROM pulls 
+			WHERE STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(data, '$.created_at')), '%Y-%m-%dT%H:%i:%sZ') >= NOW() - INTERVAL 3 MONTH 
+			LIMIT 10;
+		`
+			_, err := mysql.SelectPulls(db, query)
+			if err != nil {
+				log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
+			}
+		}
 	}
+
 }
 
 func PostgresSwitch1(db *sql.DB, id int) {

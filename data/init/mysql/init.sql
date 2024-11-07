@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS pulls (
     repo VARCHAR(255) NOT NULL,
     data JSON,
     PRIMARY KEY (id, repo),
-    INDEX idx_repo (repo)
+    INDEX idx_repo (repo),
+    INDEX idx_id (id)
 );
 
 CREATE TABLE IF NOT EXISTS pullsTest (
@@ -23,7 +24,8 @@ CREATE TABLE IF NOT EXISTS pullsTest (
     repo VARCHAR(255) NOT NULL,
     data JSON,
     PRIMARY KEY (id, repo),
-    INDEX idx_repo (repo)
+    INDEX idx_repo (repo),
+    INDEX idx_id (id)
 );
 
 CREATE TABLE IF NOT EXISTS reports_runs (
