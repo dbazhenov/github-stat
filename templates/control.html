@@ -26,11 +26,11 @@
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch3" role="switch" {{if .LoadConfig.MySQLSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mysqlSwitch3">Bad Switch (SELECT by field with no index)</label>
+            <label class="form-check-label" for="mysqlSwitch3">Bad Switch (SELECT by field with no index), odd connections only</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="mysqlSwitch4" role="switch" {{if .LoadConfig.MySQLSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mysqlSwitch4">Bad Switch (SELECT by date field in JSON)</label>
+            <label class="form-check-label" for="mysqlSwitch4">Bad Switch (SELECT by date field in JSON), odd connections only</label>
           </div>
         </div>
       </div>
@@ -52,21 +52,21 @@
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch1" role="switch" {{if .LoadConfig.PostgresSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="postgresSwitch1">Select (Repositories)</label>
+            <label class="form-check-label" for="postgresSwitch1">Repositories (Create, Read, Update, Delete)</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch2" role="switch" {{if .LoadConfig.PostgresSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="postgresSwitch2">Select and Insert (Pulls)</label>
+            <label class="form-check-label" for="postgresSwitch2">Pulls (Create, Read, Update, Delete)</label>
           </div>
         </div>
         <div class="col-md-6">
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch3" role="switch" {{if .LoadConfig.PostgresSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="postgresSwitch3">Bad Switch (Select with RAND in SQL)</label>
+            <label class="form-check-label" for="postgresSwitch3">Bad Switch (Select with RAND in SQL), odd connections only</label>
           </div>
           <div class="form-check form-switch my-4">
             <input class="form-check-input" type="checkbox" id="postgresSwitch4" role="switch" {{if .LoadConfig.PostgresSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="postgresSwitch4">Bad Switch (SELECT by date field in JSON)</label>
+            <label class="form-check-label" for="postgresSwitch4">Bad Switch, odd connections only (SELECT by date field in JSON)</label>
           </div>
         </div>
       </div>

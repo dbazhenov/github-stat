@@ -612,10 +612,37 @@ func MongoDBprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, all
 
 	log.Printf("Databases: MongoDB: Start")
 
+	admin_db := client.Database("admin") // используем базу данных admin
+
+	// Check and set profiling level
+	var profilingLevel bson.M
+	err = admin_db.RunCommand(ctx, bson.D{{Key: "profile", Value: -1}}).Decode(&profilingLevel)
+	if err != nil {
+		log.Printf("MongoDB: Get Profiling Level Error: %s", err)
+		return err
+	}
+
+	if profilingLevel["was"] == int32(0) {
+		err = admin_db.RunCommand(ctx, bson.D{{Key: "profile", Value: 1}}).Err()
+		if err != nil {
+			log.Printf("MongoDB: Set Profiling Level Error: %s", err)
+			return err
+		}
+	}
+
+	// Set operation profiling
+	err = admin_db.RunCommand(ctx, bson.D{
+		{Key: "profile", Value: 2},
+		{Key: "slowms", Value: 200},
+		{Key: "sampleRate", Value: 1.0},
+	}).Err()
+	if err != nil {
+		log.Printf("MongoDB: Set Operation Profiling Error: %s", err)
+		return err
+	}
+
 	db := client.Database(envVars.MongoDB.DB)
 	dbCollectionRepos := db.Collection("repositories")
-
-	// Creating a collection of pulls
 	dbCollectionPulls := db.Collection("pulls")
 
 	// Create an index by id and repo fields
@@ -642,29 +669,19 @@ func MongoDBprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, all
 		if err != nil {
 			return err
 		}
-		// if envVars.App.Debug {
-		// 	log.Printf("MongoDB: Repo %s: Insert repo data", *repo.FullName)
-		// }
+
 		if len(allPulls) > 0 {
-			dbCollectionPulls := db.Collection("pulls")
 			repoName := *repo.Name
 			pullRequests, exists := allPulls[repoName]
 
 			if !exists || len(pullRequests) == 0 {
 				report.Counter.ReposWithoutPRs++
-				// if envVars.App.Debug {
-				// 	log.Printf("MongoDB: Repo: %s: PRs: No pull requests found for repository", repoName)
-				// }
 			} else {
 				report.Counter.ReposWithPRs++
 				for _, pull := range pullRequests {
 
 					filter := bson.M{"id": pull.ID, "repo": repoName}
 					update := bson.M{"$set": pull}
-
-					// if envVars.App.Debug {
-					// 	log.Printf("MongoDB: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
-					// }
 
 					res, err := dbCollectionPulls.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
 					if err != nil {
@@ -678,9 +695,6 @@ func MongoDBprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, all
 				}
 
 				report.Counter.Pulls += len(pullRequests)
-				// if envVars.App.Debug {
-				// 	log.Printf("MongoDB: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
-				// }
 			}
 		}
 	}

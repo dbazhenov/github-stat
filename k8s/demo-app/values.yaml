@@ -79,17 +79,17 @@ resources:
   load:
     requests:
       memory: "2Gi"
-      cpu: "2"
+      cpu: "3"
     limits:
       memory: "2Gi"
-      cpu: "2"
+      cpu: "3"
   valkey:
     requests:
       memory: "1Gi"
-      cpu: "600m"
+      cpu: "1"
     limits:
       memory: "1Gi"
-      cpu: "600m"
+      cpu: "1"
 
 # Configurations for different instances
 separateLoads: false
@@ -118,4 +118,3 @@ loadEnvironments:
         value: "false"
       - name: LOAD_MONGODB
         value: "true"
-

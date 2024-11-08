@@ -119,14 +119,12 @@ func MySQLSwitch3(db *sql.DB, id int) {
 				log.Printf("Error: MySQL: MySQLSwitch3: goroutine: %d: message: %s", id, err)
 			}
 
-			log.Printf("MySQL: MySQLSwitch3: goroutine: %d: repo: %s", id, repo)
-
 			query := fmt.Sprintf("SELECT data FROM pulls WHERE repo = '%s' ORDER BY id ASC LIMIT 10", repo)
-			pulls, err := mysql.SelectListOfStrings(db, query)
+			_, err = mysql.SelectListOfStrings(db, query)
 			if err != nil {
 				log.Printf("Error: MySQL: MySQLSwitch3: goroutine: %d: message: %s", id, err)
 			}
-			log.Printf("MySQL: MySQLSwitch3: goroutine: %d: pulls_count: %d", id, len(pulls))
+
 		}
 
 	}
@@ -137,20 +135,16 @@ func MySQLSwitch4(db *sql.DB, id int) {
 
 	if id%2 != 0 {
 
-		currentTime := time.Now().UnixNano() / int64(time.Millisecond)
-
-		if currentTime%10 == 0 || currentTime%5 == 0 {
-
-			query := `
-			SELECT data FROM pulls 
-			WHERE STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(data, '$.created_at')), '%Y-%m-%dT%H:%i:%sZ') >= NOW() - INTERVAL 3 MONTH 
-			LIMIT 10;
-		`
-			_, err := mysql.SelectPulls(db, query)
-			if err != nil {
-				log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
-			}
+		query := `
+		SELECT data FROM pulls 
+		WHERE STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(data, '$.created_at')), '%Y-%m-%dT%H:%i:%sZ') >= NOW() - INTERVAL 3 MONTH 
+		LIMIT 10;
+	`
+		_, err := mysql.SelectPulls(db, query)
+		if err != nil {
+			log.Printf("MySQL: Error: goroutine: %d: message: %s", id, err)
 		}
+
 	}
 
 }
@@ -161,18 +155,43 @@ func PostgresSwitch1(db *sql.DB, id int) {
 
 	if err != nil {
 		log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
-	} else {
+		return
+	} else if len(repos_with_pulls) > 0 {
 		randomIndex := rand.Intn(len(repos_with_pulls))
 		randomRepo := repos_with_pulls[randomIndex]
 
 		query := fmt.Sprintf("SELECT data FROM github.repositories WHERE id = %d;", randomRepo)
 
-		_, err := postgres.SelectString(db, query)
+		data, err := postgres.SelectString(db, query)
 
 		if err != nil {
 			log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+			return
+		}
+
+		query = fmt.Sprintf("SELECT COUNT(*) FROM github.repositories_test WHERE id = %d;", randomRepo)
+
+		count, _ := postgres.SelectInt(db, query)
+		if count > 0 {
+			_, err = db.Exec("UPDATE github.repositories_test SET data = $1 WHERE id = $2", data, randomRepo)
+			if err != nil {
+				log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+			}
+		} else {
+			_, err = db.Exec("INSERT INTO github.repositories_test (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = $2", randomRepo, data)
+			if err != nil {
+				log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+			}
+		}
+
+		if id%2 != 0 {
+			_, err = db.Exec("DELETE FROM github.repositories_test WHERE id = $1", randomRepo)
+			if err != nil {
+				log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+			}
 		}
 	}
+
 }
 
 func PostgresSwitch2(db *sql.DB, id int) {
@@ -180,46 +199,89 @@ func PostgresSwitch2(db *sql.DB, id int) {
 	uniq_pulls_ids, err := postgres.SelectListOfInt(db, "SELECT DISTINCT id FROM github.pulls;")
 
 	if err != nil {
-		log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
-	} else {
+		log.Printf("Error: Postgres: PostgresSwitch2: 1: goroutine: %d: message: %s", id, err)
+	} else if len(uniq_pulls_ids) > 0 {
 		randomId := rand.Intn(len(uniq_pulls_ids))
 		randomPull := uniq_pulls_ids[randomId]
 
-		query := fmt.Sprintf("SELECT data FROM github.pulls WHERE id = %d;", randomPull)
+		query := fmt.Sprintf("SELECT repo, data FROM github.pulls WHERE id = %d;", randomPull)
 
-		pull, err := postgres.SelectPulls(db, query)
-		if err != nil {
-			log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+		row := db.QueryRow(query)
+
+		var repo, data string
+		if err := row.Scan(&repo, &data); err != nil {
+			log.Printf("Error: Postgres: PostgresSwitch2: 2: goroutine: %d: message: %s", id, err)
 		}
 
-		err = postgres.InsertPulls(db, pull, "pullsTest")
-		if err != nil {
-			log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+		query = fmt.Sprintf("SELECT COUNT(*) FROM github.pulls_test WHERE id = %d;", randomPull)
+
+		count, _ := postgres.SelectInt(db, query)
+		if count > 0 {
+			_, err = db.Exec("UPDATE github.pulls_test SET data = $1 WHERE id = $2", data, randomPull)
+			if err != nil {
+				log.Printf("Error: Postgres: PostgresSwitch2: 3: goroutine: %d: message: %s", id, err)
+			}
+		} else {
+			_, err = db.Exec("INSERT INTO github.pulls_test (id, repo, data) VALUES ($1, $2, $3) ON CONFLICT (id, repo) DO UPDATE SET data = $3", randomPull, repo, data)
+			if err != nil {
+				log.Printf("Error: Postgres: PostgresSwitch2: 4: goroutine: %d: message: %s", id, err)
+			}
 		}
+
+		_, err = db.Exec("INSERT INTO github.pulls (id, repo, data) VALUES ($1, $2, $3) ON CONFLICT (id, repo) DO UPDATE SET data = $3", randomPull, repo, data)
+		if err != nil {
+			log.Printf("Error: Postgres: PostgresSwitch2: 5: goroutine: %d: message: %s", id, err)
+		}
+
+		if id%2 != 0 {
+			_, err = db.Exec("DELETE FROM github.pulls_test WHERE id = $1", randomPull)
+			if err != nil {
+				log.Printf("Error: Postgres: PostgresSwitch2: 6: goroutine: %d: message: %s", id, err)
+			}
+		}
+
 	}
 }
 
 func PostgresSwitch3(db *sql.DB, id int) {
 
-	_, err := postgres.SelectString(db, `SELECT repo FROM github.pulls ORDER BY RANDOM() LIMIT 1;`)
+	if id%2 != 0 {
 
-	if err != nil {
-		log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+		currentTime := time.Now().UnixNano() / int64(time.Millisecond)
+
+		if currentTime%10 == 0 || currentTime%5 == 0 {
+
+			repo, err := postgres.SelectString(db, `SELECT repo FROM (SELECT DISTINCT repo FROM github.pulls) AS uniq_repos ORDER BY RANDOM() LIMIT 1`)
+			if err != nil {
+				log.Printf("Error: Postgres: PostgresSwitch3: goroutine: %d: message: %s", id, err)
+				return
+			}
+
+			query := fmt.Sprintf("SELECT data FROM github.pulls WHERE repo = '%s' ORDER BY id ASC LIMIT 10", repo)
+			_, err = postgres.SelectListOfStrings(db, query)
+			if err != nil {
+				log.Printf("Error: Postgres: PostgresSwitch3: goroutine: %d: message: %s", id, err)
+			}
+
+		}
+
 	}
 
 }
 
 func PostgresSwitch4(db *sql.DB, id int) {
 
-	query := `
-		SELECT data 
-		FROM github.pulls 
-		WHERE (to_timestamp((data->>'created_at')::text, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') >= NOW() - INTERVAL '3 months') 
-		LIMIT 10;
-	`
-	_, err := postgres.SelectPulls(db, query)
-	if err != nil {
-		log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+	if id%2 != 0 {
+		query := `
+			SELECT data 
+			FROM github.pulls 
+			WHERE (to_timestamp((data->>'created_at')::text, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') >= NOW() - INTERVAL '3 months') 
+			LIMIT 10;
+		`
+		_, err := postgres.SelectPulls(db, query)
+		if err != nil {
+			log.Printf("Postgres: Error: goroutine: %d: message: %s", id, err)
+		}
 	}
 }
 
