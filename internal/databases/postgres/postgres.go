@@ -291,17 +291,13 @@ func InitDB(connection_string string) error {
 			id BIGINT NOT NULL,
 			repo VARCHAR(255) NOT NULL,
 			data JSON,
-			PRIMARY KEY (id, repo),
-			INDEX idx_id (id),
-			INDEX idx_repo (repo)
+			PRIMARY KEY (id, repo)
 		);
 		CREATE TABLE IF NOT EXISTS github.pulls_test (
 			id BIGINT NOT NULL,
 			repo VARCHAR(255) NOT NULL,
 			data JSON,
-			PRIMARY KEY (id, repo),
-			INDEX idx_id (id),
-			INDEX idx_repo (repo)
+			PRIMARY KEY (id, repo)
 		);
         CREATE TABLE IF NOT EXISTS github.reports_runs (
             id SERIAL PRIMARY KEY,
@@ -311,6 +307,10 @@ func InitDB(connection_string string) error {
             id SERIAL PRIMARY KEY,
             data JSONB
         );
+		CREATE INDEX idx_id_pulls ON github.pulls (id);
+		CREATE INDEX idx_repo_pulls ON github.pulls (repo);
+		CREATE INDEX idx_id_pulls_test ON github.pulls_test (id);
+		CREATE INDEX idx_repo_pulls_test ON github.pulls_test (repo);
     `
 	err = executeSQL(newDB, schemaSQL)
 	if err != nil {
