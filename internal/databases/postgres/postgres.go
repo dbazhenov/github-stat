@@ -283,18 +283,26 @@ func InitDB(connection_string string) error {
             id SERIAL PRIMARY KEY,
             data JSONB
         );
-        CREATE TABLE IF NOT EXISTS github.pulls (
-            id BIGINT NOT NULL,
-            repo VARCHAR(255) NOT NULL,
-            data JSON,
-            PRIMARY KEY (id, repo)
+        CREATE TABLE IF NOT EXISTS github.repositories_test (
+            id SERIAL PRIMARY KEY,
+            data JSONB
         );
-        CREATE TABLE IF NOT EXISTS github.pullsTest (
-            id BIGINT NOT NULL,
-            repo VARCHAR(255) NOT NULL,
-            data JSON,
-            PRIMARY KEY (id, repo)
-        );
+		CREATE TABLE IF NOT EXISTS github.pulls (
+			id BIGINT NOT NULL,
+			repo VARCHAR(255) NOT NULL,
+			data JSON,
+			PRIMARY KEY (id, repo),
+			INDEX idx_id (id),
+			INDEX idx_repo (repo)
+		);
+		CREATE TABLE IF NOT EXISTS github.pulls_test (
+			id BIGINT NOT NULL,
+			repo VARCHAR(255) NOT NULL,
+			data JSON,
+			PRIMARY KEY (id, repo),
+			INDEX idx_id (id),
+			INDEX idx_repo (repo)
+		);
         CREATE TABLE IF NOT EXISTS github.reports_runs (
             id SERIAL PRIMARY KEY,
             data JSONB

@@ -428,6 +428,8 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 				},
 			}
 		}()
+	} else {
+		log.Printf("Error: Dataset: MongoDB: Config: %v", app.Config.MySQL)
 	}
 
 	// PostgreSQL
@@ -468,6 +470,8 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 				},
 			}
 		}()
+	} else {
+		log.Printf("Error: Dataset: MongoDB: Config: %v", app.Config.Postgres)
 	}
 	// MongoDB
 	if app.Config.MongoDB.ConnectionStatus == "Connected" {
@@ -508,6 +512,8 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 				},
 			}
 		}()
+	} else {
+		log.Printf("Error: Dataset: MongoDB: Config: %v", app.Config.MongoDB)
 	}
 
 	go func() {

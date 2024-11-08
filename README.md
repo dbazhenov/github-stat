@@ -74,6 +74,7 @@ Start PMM in your browser (localhost)
 `gcloud container clusters create demo-app --project percona-product --zone us-central1-a --cluster-version 1.30 --machine-type n1-standard-16 --num-nodes=1`
 
 Doc: [Create Kubernetes cluster on Google Kubernetes Engine (GKE)](https://docs.percona.com/everest/quickstart-guide/gke.html#environment-setup)
+
 2. Install [Percona Everest](https://docs.percona.com/everest/index.html) to create databases or [Percona Operators](https://docs.percona.com/percona-operators/).
 
 Percona Everest documentation:
@@ -96,11 +97,15 @@ percona/pmm
 
 Get the administrator password (admin user)
 
-`kubectl get secret pmm-secret -n demo -o jsonpath='{.data.PMM_ADMIN_PASSWORD}' | base64 --decode`
+```
+kubectl get secret pmm-secret -n demo -o jsonpath='{.data.PMM_ADMIN_PASSWORD}' | base64 --decode
+```
 
 Get a public IP to open PMM in a browser
 
-`kubectl get svc -n demo monitoring-service -o jsonpath="{.status.loadBalancer.ingress[0].ip}"`
+```
+kubectl get svc -n demo monitoring-service -o jsonpath="{.status.loadBalancer.ingress[0].ip}"
+```
 
 Next, you can run the Demo application, either manually or with Helm.
 
@@ -118,27 +123,47 @@ Next, you can run the Demo application, either manually or with Helm.
 
 2. Launch the application
 
-`helm install demo-app ./k8s/demo-app -n demo`
+```
+helm install demo-app ./k8s/demo-app -n demo
+```
 
 3. Run `kubectl -n demo get svc` to get the public IP for demo-app-web-service. Launch the control panel in your browser.
 
 4. Open the Settings tab on the control panel and set the parameters for connecting to the databases you created in Percona Everest or with Percona Operators.
 
+5. You may need to restart the dataset pod to speed up the process of loading the dataset into the databases.
+
+```
+kubectl -n demo delete pod [DATASET_POD]
+```
+
+6. You can change the allocated resources or the number of replicas by editing the `values.yaml` file and issuing the command 
+
+```
+helm upgrade demo-app ./k8s/demo-app -n demo
+```
+
 ### Running Demo application manually
 
 1. Create Secrets and ConfigMap for the application.
 
-`kubectl apply -f k8s/config.yaml -n demo`
+```
+kubectl apply -f k8s/config.yaml -n demo
+```
 
 Check the k8s/config.yaml file. Be sure to set `GITHUB_TOKEN`, which is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
 
 2. Run Valkey database
 
-`kubectl apply -f k8s/valkey.yaml -n demo`
+```
+kubectl apply -f k8s/valkey.yaml -n demo
+```
 
 3. Run the Control Panel script
 
-`kubectl apply -f k8s/web-deployment.yaml -n demo`
+```
+kubectl apply -f k8s/web-deployment.yaml -n demo
+```
 
 Run `kubectl -n demo get svc` to get the public IP. Launch the control panel in your browser.
 
@@ -148,13 +173,17 @@ The first time you connect to MySQL and Postgres, you will need to create a sche
 
 4. Run the Dataset loader script
 
-`kubectl apply -f k8s/dataset-deployment.yaml -n demo`
+```
+kubectl apply -f k8s/dataset-deployment.yaml -n demo
+```
 
 5. Run the Load Generator script.
 
 If one script for all databases. 
 
-`kubectl apply -f k8s/load-deployment.yaml -n demo`
+```
+kubectl apply -f k8s/load-deployment.yaml -n demo
+```
 
 You can run a separate load generator for each database. To distribute resources or scale the load.
 
