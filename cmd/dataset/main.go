@@ -37,6 +37,7 @@ func main() {
 		checkConnectSettings()
 
 		// The main process of getting data from GitHub API and store it into MySQL, PostgreSQL, MongoDB databases.
+
 		fetchGitHubData(app.Config)
 
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
@@ -87,6 +88,13 @@ func checkConnectSettings() {
 }
 
 func fetchGitHubData(envVars app.EnvVars) {
+
+	if envVars.Postgres.ConnectionStatus != "Connected" &&
+		envVars.MySQL.ConnectionStatus != "Connected" &&
+		envVars.MongoDB.ConnectionStatus != "Connected" {
+		log.Printf("Error: No database connections are established.")
+		return
+	}
 
 	report := helperReportStart()
 
@@ -611,35 +619,6 @@ func MongoDBprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, all
 	defer client.Disconnect(ctx)
 
 	log.Printf("Databases: MongoDB: Start")
-
-	admin_db := client.Database("admin") // используем базу данных admin
-
-	// Check and set profiling level
-	var profilingLevel bson.M
-	err = admin_db.RunCommand(ctx, bson.D{{Key: "profile", Value: -1}}).Decode(&profilingLevel)
-	if err != nil {
-		log.Printf("MongoDB: Get Profiling Level Error: %s", err)
-		return err
-	}
-
-	if profilingLevel["was"] == int32(0) {
-		err = admin_db.RunCommand(ctx, bson.D{{Key: "profile", Value: 1}}).Err()
-		if err != nil {
-			log.Printf("MongoDB: Set Profiling Level Error: %s", err)
-			return err
-		}
-	}
-
-	// Set operation profiling
-	err = admin_db.RunCommand(ctx, bson.D{
-		{Key: "profile", Value: 2},
-		{Key: "slowms", Value: 200},
-		{Key: "sampleRate", Value: 1.0},
-	}).Err()
-	if err != nil {
-		log.Printf("MongoDB: Set Operation Profiling Error: %s", err)
-		return err
-	}
 
 	db := client.Database(envVars.MongoDB.DB)
 	dbCollectionRepos := db.Collection("repositories")

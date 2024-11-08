@@ -1,1 +1,1 @@
-db.setProfilingLevel(1);
+db.setProfilingLevel(2, {slowms: 0})
