@@ -89,19 +89,12 @@ func checkConnectSettings() {
 
 func fetchGitHubData(envVars app.EnvVars) {
 
-	envVars.Postgres.ConnectionStatus = "Test"
-	envVars.MySQL.ConnectionStatus = "Test"
-	envVars.MongoDB.ConnectionStatus = "Test"
-
-	log.Printf("Test Start %v", envVars)
 	if envVars.Postgres.ConnectionStatus != "Connected" &&
 		envVars.MySQL.ConnectionStatus != "Connected" &&
 		envVars.MongoDB.ConnectionStatus != "Connected" {
 		log.Printf("Error: No database connections are established.")
 		return
 	}
-
-	log.Printf("Test Chech %v", envVars)
 
 	report := helperReportStart()
 
