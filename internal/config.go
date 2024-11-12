@@ -20,9 +20,12 @@ type EnvVars struct {
 }
 
 type ConfigApp struct {
-	DelayMinutes int
-	LoadSleep    int
-	Debug        bool
+	DelayMinutes     int
+	DatasetLoadType  string
+	LoadSleep        int
+	Debug            bool
+	DatasetDemoRepos string
+	DatasetDemoPulls string
 }
 
 type ConfigLoad struct {
@@ -127,6 +130,9 @@ func GetEnvVars() (EnvVars, error) {
 
 	envVars.ControlPanel.Port = os.Getenv("CONTROL_PANEL_PORT")
 
+	envVars.App.DatasetLoadType = os.Getenv("DATASET_LOAD_TYPE")
+	envVars.App.DatasetDemoRepos = os.Getenv("DATASET_DEMO_CSV_REPOS")
+	envVars.App.DatasetDemoPulls = os.Getenv("DATASET_DEMO_CSV_PULLS")
 	envVars.App.DelayMinutes, _ = parseInt("DELAY_MINUTES")
 
 	return envVars, nil

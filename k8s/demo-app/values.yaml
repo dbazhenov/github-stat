@@ -1,41 +1,25 @@
 name: demo-app
-
-# Secret data
-githubToken: "" # Required parameter https://github.com/settings/tokens
-mongodbPassword: "password"
-pgPassword: "password"
-mysqlPassword: "password"
-valkeyPassword: ""
-
-# Configurations for the application
-githubOrg: "percona"
-loadMySQL: "true"
-loadPostgres: "true"
-loadMongoDB: "true"
-valkeyAddr: "demo-app-valkey-service"
-valkeyPort: "6379"
-valkeyDB: "0"
-valkeyAllowEmptyPassword: "yes"
-mongodbUser: "databaseAdmin"
-mongodbDB: "dataset"
-mongodbHost: "localhost"
-mongodbPort: "27017"
-pgUser: "postgres"
-pgDB: "dataset"
-pgHost: "localhost"
-pgPort: "5432"
-mysqlUser: "root"
-mysqlDB: "dataset"
-mysqlHost: "localhost"
-mysqlPort: "3306"
-delayMinutes: "10"
 debug: "false"
 
-controlPanelService:
-  type: LoadBalancer  # LoadBalancer or NodePort 
-  nodePort: 30001
-  port: 80
-  targetPort: 3001 # controlPanelPort - CONTROL_PANEL_PORT
+# Dataset import configuration
+# Options for datasetLoadType:
+# - csv: Load data from CSV files.
+# - github_chunks: Get data from the GitHub API and write to the database in portions for each repository.
+# - github_consistent: First get all data from the GitHub API, then start writing to the databases.
+datasetLoadType: "github_chunks" # Options: csv, github_chunks, github_consistent
+
+# Delay between data imports and updates, in minutes. Useful if the number of requests to the GitHub API is limited.
+delayMinutes: "10"
+
+# Parameters for loading a dataset from the GitHub API.
+# Required if datasetLoadType is set to github_chunks or github_consistent.
+githubToken: "" # Required parameter, get it from https://github.com/settings/tokens
+githubOrg: "percona"
+
+# Path to files with demo data to load from CSV files.
+# Required if datasetLoadType is set to csv.
+datasetDemoPullsCSV: "https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/pulls.csv.zip"
+datasetDemoReposCSV: "https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/repositories.csv.zip"
 
 replicaCount:
   dataset: 1
@@ -58,6 +42,12 @@ images:
     repository: valkey/valkey
     pullPolicy: Always
     tag: "8"
+
+controlPanelService:
+  type: LoadBalancer  # LoadBalancer or NodePort 
+  nodePort: 30001
+  port: 80
+  targetPort: 3001 # controlPanelPort - CONTROL_PANEL_PORT
 
 useResourceLimits: true
 
@@ -118,3 +108,27 @@ loadEnvironments:
         value: "false"
       - name: LOAD_MONGODB
         value: "true"
+
+# Secret data
+mongodbPassword: "password"
+pgPassword: "password"
+mysqlPassword: "password"
+valkeyPassword: ""
+
+# Configurations for the application
+valkeyAddr: "demo-app-valkey-service"
+valkeyPort: "6379"
+valkeyDB: "0"
+valkeyAllowEmptyPassword: "yes"
+mongodbUser: "databaseAdmin"
+mongodbDB: "dataset"
+mongodbHost: "localhost"
+mongodbPort: "27017"
+pgUser: "postgres"
+pgDB: "dataset"
+pgHost: "localhost"
+pgPort: "5432"
+mysqlUser: "root"
+mysqlDB: "dataset"
+mysqlHost: "localhost"
+mysqlPort: "3306"

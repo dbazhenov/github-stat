@@ -1,9 +1,17 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	app "github-stat/internal"
@@ -33,18 +41,270 @@ func main() {
 	defer valkey.Valkey.Close()
 
 	for {
-		log.Printf("Dataset: Config: %v", app.Config)
+
 		checkConnectSettings()
 
 		// The main process of getting data from GitHub API and store it into MySQL, PostgreSQL, MongoDB databases.
 
-		fetchGitHubData(app.Config)
+		if app.Config.App.DatasetLoadType == "github_chunks" {
+			fetchGitHubDataInChunks(app.Config)
+		} else if app.Config.App.DatasetLoadType == "github_consistent" {
+			fetchGitHubData(app.Config)
+		} else {
+			importCSVToDB(app.Config)
+		}
 
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
 		helperSleep(app.Config)
 		app.InitConfig()
 
 	}
+}
+
+func importCSVToDB(envVars app.EnvVars) error {
+
+	allPulls, err := getPullsCSV(envVars)
+	if err != nil {
+		log.Printf("importCSVToDB: Pulls: Error: %v", err)
+		return err
+	}
+
+	allRepos, err := getReposCSV(envVars)
+	if err != nil {
+		log.Printf("importCSVToDB: Repos: Error: %v", err)
+		return err
+	}
+
+	// Asynchronous writing of repositories and Pull Requests to databases (MySQL, PostgreSQL, MongoDB)
+	allPullsMap := make(map[string][]*github.PullRequest)
+	for _, pull := range allPulls {
+		repoName := pull.Base.Repo.GetName()
+		allPullsMap[repoName] = append(allPullsMap[repoName], pull)
+	}
+
+	asyncProcessDBs(envVars, allRepos, allPullsMap)
+
+	return nil
+}
+
+func getPullsCSV(envVars app.EnvVars) ([]*github.PullRequest, error) {
+	filePath := envVars.App.DatasetDemoPulls
+
+	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+		log.Printf("getPullsCSV: Downloading file from URL: %s", filePath)
+		tempFile, err := downloadFileFromURL(filePath)
+		if err != nil {
+			log.Printf("getPullsCSV: DownloadFileFromURL: Error: %v", err)
+			return nil, err
+		}
+		defer os.Remove(tempFile)
+		filePath = tempFile
+	}
+
+	var allPulls []*github.PullRequest
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if ext == ".zip" {
+		zipFile, err := zip.OpenReader(filePath)
+		if err != nil {
+			log.Printf("getPullsCSV: Open ZIP: Error: %v", err)
+			return nil, err
+		}
+		defer zipFile.Close()
+
+		for _, f := range zipFile.File {
+			if !strings.HasSuffix(f.Name, ".csv") {
+				continue
+			}
+
+			rc, err := f.Open()
+			if err != nil {
+				log.Printf("getPullsCSV: Open CSV in ZIP: Error: %v", err)
+				return nil, err
+			}
+			defer rc.Close()
+
+			reader := csv.NewReader(rc)
+			reader.LazyQuotes = true
+			records, err := reader.ReadAll()
+			if err != nil {
+				log.Printf("getPullsCSV: ZIP: CSV: ReadAll: Error: %v", err)
+				return nil, err
+			}
+
+			allPulls, err = processPullsRecords(records, allPulls)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else if ext == ".csv" {
+		file, err := os.Open(filePath)
+		if err != nil {
+			log.Printf("getPullsCSV: Open CSV: Error: %v", err)
+			return nil, err
+		}
+		defer file.Close()
+
+		reader := csv.NewReader(file)
+		reader.LazyQuotes = true
+		records, err := reader.ReadAll()
+		if err != nil {
+			log.Printf("getPullsCSV: ReadAll: CSV: Error: %v", err)
+			return nil, err
+		}
+
+		allPulls, err = processPullsRecords(records, allPulls)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("getPullsCSV: unsupported file type: %s", ext)
+	}
+
+	return allPulls, nil
+}
+
+func processPullsRecords(records [][]string, allPulls []*github.PullRequest) ([]*github.PullRequest, error) {
+	for i, record := range records {
+		if i == 0 {
+			continue
+		}
+
+		data := record[2]
+
+		var pullRequest github.PullRequest
+
+		err := json.Unmarshal([]byte(data), &pullRequest)
+		if err != nil {
+			log.Printf("processPullsRecords: Unmarshal: Error: %v", err)
+			return nil, err
+		}
+
+		allPulls = append(allPulls, &pullRequest)
+	}
+	return allPulls, nil
+}
+
+func getReposCSV(envVars app.EnvVars) ([]*github.Repository, error) {
+	filePath := envVars.App.DatasetDemoRepos
+
+	if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+		log.Printf("getReposCSV: Downloading file from URL: %s", filePath)
+		tempFile, err := downloadFileFromURL(filePath)
+		if err != nil {
+			log.Printf("getReposCSV: DownloadFileFromURL: Error: %v", err)
+			return nil, err
+		}
+		defer os.Remove(tempFile)
+		filePath = tempFile
+	}
+
+	var allRepos []*github.Repository
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if ext == ".zip" {
+		zipFile, err := zip.OpenReader(filePath)
+		if err != nil {
+			log.Printf("getReposCSV: Open ZIP: Error: %v", err)
+			return nil, err
+		}
+		defer zipFile.Close()
+
+		for _, f := range zipFile.File {
+			if !strings.HasSuffix(f.Name, ".csv") {
+				continue
+			}
+
+			rc, err := f.Open()
+			if err != nil {
+				log.Printf("getReposCSV: Open CSV in ZIP: Error: %v", err)
+				return nil, err
+			}
+			defer rc.Close()
+
+			reader := csv.NewReader(rc)
+			reader.LazyQuotes = true
+			records, err := reader.ReadAll()
+			if err != nil {
+				log.Printf("getReposCSV: ReadAll: Error: %v", err)
+				return nil, err
+			}
+
+			allRepos, err = processRepoRecords(records, allRepos)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else if ext == ".csv" {
+		file, err := os.Open(filePath)
+		if err != nil {
+			log.Printf("getReposCSV: Open CSV: Error: %v", err)
+			return nil, err
+		}
+		defer file.Close()
+
+		reader := csv.NewReader(file)
+		reader.LazyQuotes = true
+		records, err := reader.ReadAll()
+		if err != nil {
+			log.Printf("getReposCSV: ReadAll: Error: %v", err)
+			return nil, err
+		}
+
+		allRepos, err = processRepoRecords(records, allRepos)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("getReposCSV: unsupported file type: %s", ext)
+	}
+
+	return allRepos, nil
+}
+
+func processRepoRecords(records [][]string, allRepos []*github.Repository) ([]*github.Repository, error) {
+	for i, record := range records {
+		if i == 0 {
+			continue
+		}
+
+		data := record[1]
+
+		var repo github.Repository
+
+		err := json.Unmarshal([]byte(data), &repo)
+		if err != nil {
+			log.Printf("processRepoRecords: Unmarshal: Error: %v", err)
+			return nil, err
+		}
+
+		allRepos = append(allRepos, &repo)
+	}
+	return allRepos, nil
+}
+
+func downloadFileFromURL(url string) (string, error) {
+
+	ext := filepath.Ext(url)
+
+	tmpFile, err := os.CreateTemp("", "dataset-*"+ext)
+	if err != nil {
+		return "", err
+	}
+	defer tmpFile.Close()
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(tmpFile, resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return tmpFile.Name(), nil
 }
 
 func checkConnectSettings() {
@@ -83,6 +343,100 @@ func checkConnectSettings() {
 
 	if app.Config.Postgres.ConnectionString != "" {
 		app.Config.Postgres.ConnectionStatus = postgres.CheckPostgreSQL(app.Config.Postgres.ConnectionString)
+	}
+
+}
+
+func fetchGitHubDataInChunks(envVars app.EnvVars) {
+
+	report := helperReportStart()
+
+	// Get all the repositories of the organization.
+	allRepos, counterRepos, err := app.FetchGitHubRepos(envVars)
+	if err != nil {
+		log.Printf("Error: fetchGitHubDataInChunks: %v", err)
+	}
+
+	report.Timer["ApiRepos"] = time.Now().UnixMilli()
+
+	// For DEBUG mode. Let's keep only 4 repositories out of many to speed up the complete process.
+	allRepos = filterRepos(envVars, allRepos)
+
+	var allPulls []*github.PullRequest
+	counterPulls := map[string]*int{
+		"pulls_api_requests": new(int),
+		"pulls":              new(int),
+		"pulls_full":         new(int),
+		"pulls_latest":       new(int),
+		"repos":              new(int),
+		"repos_full":         new(int),
+		"repos_latest":       new(int),
+	}
+
+	if envVars.GitHub.Token != "" {
+		log.Printf("Check Latest Updates: Start")
+		// Get the latest Pull Requests updates to download only the new ones. Will download all Pull Requests on the first run.
+		pullsLastUpdate, err := getLatestUpdates(envVars, allRepos)
+		if err != nil {
+			log.Printf("getLatestUpdates: %v", err)
+		}
+
+		report.Timer["DBLatestUpdates"] = time.Now().UnixMilli()
+
+		// Get Pull Requests for all repositories.
+		for _, repo := range allRepos {
+			log.Printf("GitHub API: Start: Repo: %s", *repo.Name)
+
+			allPulls, err = app.FetchGitHubPullsByRepo(envVars, repo, pullsLastUpdate, counterPulls)
+			if err != nil {
+				log.Printf("FetchGitHubPullsByRepos: %v", err)
+			}
+
+			// Asynchronous writing of repositories and Pull Requests to databases (MySQL, PostgreSQL, MongoDB)
+			asyncProcessDBsInChunks(envVars, repo, allPulls)
+
+		}
+
+		report.Timer["ApiPulls"] = time.Now().UnixMilli()
+	}
+
+	report.Timer["DBInsert"] = time.Now().UnixMilli()
+
+	counterPullsMap := make(map[string]int)
+	for k, v := range counterPulls {
+		counterPullsMap[k] = *v
+	}
+
+	helperReportFinish(envVars, report, counterPullsMap, counterRepos)
+
+}
+
+func asyncProcessDBsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) {
+
+	ctx := context.Background()
+
+	g, _ := errgroup.WithContext(ctx)
+
+	if envVars.MySQL.ConnectionStatus == "Connected" {
+		g.Go(func() error {
+			return MySQLprocessPullsInChunks(envVars, repo, allPulls)
+		})
+	}
+
+	if envVars.Postgres.ConnectionStatus == "Connected" {
+		g.Go(func() error {
+			return PostgreSQLprocessPullsInChunks(envVars, repo, allPulls)
+		})
+	}
+
+	if envVars.MongoDB.ConnectionStatus == "Connected" {
+		g.Go(func() error {
+			return MongoDBprocessPullsInChunks(envVars, repo, allPulls)
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		log.Printf("Error: asyncProcessDBs: %v", err)
 	}
 
 }
@@ -145,14 +499,41 @@ func fetchGitHubData(envVars app.EnvVars) {
 
 func filterRepos(envVars app.EnvVars, allRepos []*github.Repository) []*github.Repository {
 
-	// Dev Filter
+	includedRepos := map[string]bool{
+		"pxc-docs":           true,
+		"ivee-docs":          true,
+		"percona-valkey-doc": true,
+		"ab":                 true,
+		"documentation":      true,
+		"pg_tde":             true,
+		"postgres_exporter":  true,
+		"pg_stat_monitor":    true,
+		"roadmap":            true,
+		"everest-catalog":    true,
+		"openstack_ansible":  true,
+		"go-mysql":           true,
+		"rds_exporter":       true,
+		"postgres":           true,
+		"awesome-pmm":        true,
+		"pmm-demo":           true,
+		"qan-api":            true,
+		"percona-toolkit":    true,
+		"mongodb_exporter":   true,
+		"everest":            true,
+		"community":          true,
+		"rocksdb":            true,
+		"mysql-wsrep":        true,
+		"vagrant-fabric":     true,
+		"debian":             true,
+		"jemalloc":           true,
+	}
+
 	var allReposFiltered []*github.Repository
 	if envVars.App.Debug {
 		for _, repo := range allRepos {
-			if *repo.Name != "pxc-docs" && *repo.Name != "ab" && *repo.Name != "documentation" && *repo.Name != "community" {
-				continue
+			if includedRepos[*repo.Name] {
+				allReposFiltered = append(allReposFiltered, repo)
 			}
-			allReposFiltered = append(allReposFiltered, repo)
 		}
 
 		return allReposFiltered
@@ -403,6 +784,50 @@ func findMinimumDate(dates ...string) string {
 	return minDate
 }
 
+func MySQLprocessPullsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) error {
+
+	db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
+	if err != nil {
+		log.Printf("Databases: MySQL: Error: message: %s", err)
+		return err
+	}
+	defer db.Close()
+
+	log.Printf("Databases: MySQL: Start: Repo: %s, Pulls: %d", *repo.Name, len(allPulls))
+
+	id := repo.ID
+	repoJSON, err := json.Marshal(repo)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec("INSERT INTO repositories (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?", id, repoJSON, repoJSON)
+	if err != nil {
+		return err
+	}
+
+	if len(allPulls) > 0 {
+
+		for _, pull := range allPulls {
+
+			id := pull.ID
+			pullJSON, err := json.Marshal(pull)
+			if err != nil {
+				return err
+			}
+
+			_, err = db.Exec("INSERT INTO pulls (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?", id, *repo.Name, pullJSON, pullJSON)
+			if err != nil {
+				return err
+			}
+
+		}
+
+	}
+
+	return nil
+}
+
 func MySQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
 
 	report := app.ReportDatabases{
@@ -495,6 +920,46 @@ func MySQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPu
 	_, err = db.Exec("INSERT INTO reports_databases (data) VALUES (?)", reportJSON)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func PostgreSQLprocessPullsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) error {
+
+	db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
+	if err != nil {
+		log.Printf("Databases: PostgreSQL: Start: Error: %s", err)
+		return err
+	}
+	defer db.Close()
+
+	log.Printf("Databases: Postgres: Start: Repo: %s, Pulls: %d", *repo.Name, len(allPulls))
+
+	id := repo.ID
+	repoJSON, err := json.Marshal(repo)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec("INSERT INTO github.repositories (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = $2", id, repoJSON)
+	if err != nil {
+		return err
+	}
+
+	for _, pull := range allPulls {
+
+		id := pull.ID
+		pullJSON, err := json.Marshal(pull)
+		if err != nil {
+			return err
+		}
+
+		_, err = db.Exec("INSERT INTO github.pulls (id, repo, data) VALUES ($1, $2, $3) ON CONFLICT (id, repo) DO UPDATE SET data = $3", id, *repo.Name, pullJSON)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	return nil
@@ -595,6 +1060,66 @@ func PostgreSQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, 
 	_, err = db.Exec("INSERT INTO github.reports_databases (data) VALUES ($1)", reportJSON)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func MongoDBprocessPullsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) error {
+
+	ctx := context.Background()
+
+	client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
+	if err != nil {
+		log.Printf("MongoDB: Connect Error: message: %s", err)
+		return err
+	}
+	defer client.Disconnect(ctx)
+
+	log.Printf("Databases: MongoDB: Start: Repo: %s, Pulls: %d", *repo.Name, len(allPulls))
+
+	db := client.Database(envVars.MongoDB.DB)
+	dbCollectionRepos := db.Collection("repositories")
+	dbCollectionPulls := db.Collection("pulls")
+
+	// Create an index by id and repo fields
+	indexModel := mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "id", Value: 1},
+			{Key: "repo", Value: 1},
+		},
+		Options: options.Index().SetUnique(true),
+	}
+
+	_, err = dbCollectionPulls.Indexes().CreateOne(ctx, indexModel)
+	if err != nil {
+		return err
+	}
+
+	filter := bson.M{"id": repo.ID}
+	update := bson.M{"$set": repo}
+
+	_, err = dbCollectionRepos.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+	if err != nil {
+		return err
+	}
+
+	if len(allPulls) > 0 {
+
+		repoName := *repo.Name
+
+		for _, pull := range allPulls {
+
+			filter := bson.M{"id": pull.ID, "repo": repoName}
+			update := bson.M{"$set": pull}
+
+			_, err := dbCollectionPulls.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+			if err != nil {
+				return err
+			}
+
+		}
+
 	}
 
 	return nil
