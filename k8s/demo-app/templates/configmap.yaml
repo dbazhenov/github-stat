@@ -3,11 +3,7 @@ kind: ConfigMap
 metadata:
   name: {{ .Values.name }}-config
 data:
-  GITHUB_ORG: "{{ .Values.githubOrg }}"
   CONTROL_PANEL_PORT: "{{ .Values.controlPanelService.targetPort }}"
-  LOAD_MYSQL: "{{ .Values.loadMySQL }}"
-  LOAD_POSTGRES: "{{ .Values.loadPostgres }}"
-  LOAD_MONGODB: "{{ .Values.loadMongoDB }}"
   VALKEY_ADDR: "{{ .Values.valkeyAddr }}"
   VALKEY_PORT: "{{ .Values.valkeyPort }}"
   VALKEY_DB: "{{ .Values.valkeyDB }}"
@@ -23,5 +19,4 @@ data:
   MYSQL_DB: "{{ .Values.mysqlDB }}"
   MYSQL_HOST: "{{ .Values.mysqlHost }}"
   MYSQL_PORT: "{{ .Values.mysqlPort }}"
-  DELAY_MINUTES: "{{ .Values.delayMinutes }}"
   DEBUG: "{{ .Values.debug }}"

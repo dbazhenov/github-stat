@@ -269,6 +269,7 @@ func settingsDBConnections(w http.ResponseWriter, r *http.Request) {
 		valkeySettings.MongoDBStatus = mongodbStatus
 		if mongodbDatabase != "" {
 			valkeySettings.MongoDBDatabase = mongodbDatabase
+			app.Config.MongoDB.DB = mongodbDatabase
 		}
 
 		postgresqlStatus := postgres.CheckPostgreSQL(postgresqlConnectionString)
@@ -389,7 +390,6 @@ func dataset(w http.ResponseWriter, r *http.Request) {
 		dbType string
 		data   app.Database
 	}, 3)
-
 	// MySQL
 	if app.Config.MySQL.ConnectionStatus == "Connected" {
 		wg.Add(1)
