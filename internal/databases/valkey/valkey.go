@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 
 	"github.com/go-redis/redis"
 
@@ -29,6 +31,82 @@ func InitValkey(envVars app.EnvVars) {
 		log.Printf("Valkey: Connect: %v", Valkey.Options().Addr)
 	}
 }
+
+func GetMaxID(dbType string) (int64, error) {
+	keys, err := Valkey.Keys(fmt.Sprintf("databases:%s-*", dbType)).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	var maxID int64
+	for _, key := range keys {
+		parts := strings.Split(key, "-")
+		if len(parts) < 2 {
+			continue
+		}
+		idNum, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		if idNum > maxID {
+			maxID = idNum
+		}
+	}
+
+	return maxID, nil
+}
+
+func GetDatabases() ([]map[string]string, error) {
+
+	keys, err := Valkey.Keys("databases:*").Result()
+	if err != nil {
+		return nil, err
+	}
+
+	var databases []map[string]string
+	for _, key := range keys {
+		fields, err := Valkey.HGetAll(key).Result()
+		if err != nil {
+			return nil, err
+		}
+		databases = append(databases, fields)
+	}
+
+	return databases, nil
+}
+
+func AddDatabase(id string, fields map[string]string) error {
+
+	key := fmt.Sprintf("databases:%s", id)
+
+	// Преобразуем map[string]string в map[string]interface{}
+	data := make(map[string]interface{})
+	for k, v := range fields {
+		data[k] = v
+	}
+
+	// Добавляем информацию о базе данных в хэш
+	_, err := Valkey.HMSet(key, data).Result()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DeleteDatabase(id string) error {
+
+	key := fmt.Sprintf("databases:%s", id)
+
+	res, err := Valkey.Del(key).Result()
+	log.Printf("Delete db: %s, %v, %v", id, res, err)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func SaveConfigToValkey(load app.Load) error {
 	data, err := json.Marshal(load)
 	if err != nil {

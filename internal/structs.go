@@ -39,6 +39,7 @@ type IndexData struct {
 		PostgreSQL Database
 		MongoDB    Database
 	}
+	Databases []map[string]string
 }
 
 type Database struct {

@@ -15,6 +15,7 @@ import (
 	"github-stat/internal/databases/mongodb"
 	"github-stat/internal/databases/mysql"
 	"github-stat/internal/databases/postgres"
+
 	"github-stat/internal/databases/valkey"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -73,6 +74,10 @@ func handleRequest() {
 	http.HandleFunc("/settings", settingsDBConnections)
 	http.HandleFunc("/settings_load", settingsLoad)
 	http.HandleFunc("/dataset", dataset)
+	http.HandleFunc("/create_db", createDatabase)
+	http.HandleFunc("/database_list", databaseList)
+	http.HandleFunc("/update_db/", updateDatabase)
+	http.HandleFunc("/delete_db", deleteDatabase)
 
 	port := app.Config.ControlPanel.Port
 	if port == "" {
@@ -84,12 +89,143 @@ func handleRequest() {
 
 }
 
+func createDatabase(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		dbType := r.FormValue("dbType")
+		connectionString := r.FormValue("connectionString")
+		mongodbDatabase := r.FormValue("mongodbDatabase")
+
+		maxID, err := valkey.GetMaxID(dbType)
+		if err != nil {
+			log.Printf("Error: Getting max ID: %v", err)
+			http.Error(w, "Error getting max ID", http.StatusInternalServerError)
+			return
+		}
+
+		newID := maxID + 1
+		id := fmt.Sprintf("%s-%d", dbType, newID)
+
+		fields := map[string]string{
+			"id":               id,
+			"type":             dbType,
+			"connectionString": connectionString,
+			"loadSwitch":       "false",
+			"position":         "0",
+		}
+
+		if dbType == "mongodb" {
+			fields["database"] = mongodbDatabase
+		}
+
+		err = valkey.AddDatabase(id, fields)
+		if err != nil {
+			log.Printf("Error: Creating database: %v", err)
+			http.Error(w, "Error creating database", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "success", "id": id})
+	} else {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+	}
+}
+
+func updateDatabase(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/update_db/")
+	connectionString := r.FormValue("connectionString")
+	database := r.FormValue("database")
+	loadSwitch := r.FormValue("loadSwitch")
+	position := r.FormValue("position")
+
+	if position == "" {
+		position = "0"
+	}
+	if loadSwitch == "" {
+		loadSwitch = "false"
+	}
+
+	fields := map[string]string{
+		"connectionString": connectionString,
+		"loadSwitch":       loadSwitch,
+		"position":         position,
+	}
+	if database != "" {
+		fields["database"] = database
+	}
+
+	log.Printf("Update: ID: %s, Fields: %v", id, fields)
+
+	err := valkey.AddDatabase(id, fields)
+	if err != nil {
+		log.Printf("Error: Updating database: %v", err)
+		http.Error(w, "Error updating database", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+func deleteDatabase(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		id := r.FormValue("id")
+
+		if id == "" {
+			log.Printf("Error: No ID provided for deletion")
+			http.Error(w, "No ID provided", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("Delete db: %s", id)
+
+		err := valkey.DeleteDatabase(id)
+		if err != nil {
+			log.Printf("Error: Deleting database: %v", err)
+			http.Error(w, "Error deleting database", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	} else {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+	}
+}
+
+func databaseList(w http.ResponseWriter, r *http.Request) {
+	databases, err := valkey.GetDatabases()
+	if err != nil {
+		log.Printf("Error: Getting databases: %v", err)
+		http.Error(w, "Error getting databases", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Databases": databases,
+	}
+
+	tmpl, err := template.ParseFiles("templates/database_list.html")
+	if err != nil {
+		log.Printf("Error: Parsing template: %v", err)
+		http.Error(w, "Error parsing template", http.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.ExecuteTemplate(w, "database_list", data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+}
+
 func index(w http.ResponseWriter, r *http.Request) {
 
 	t, err := template.ParseFiles("templates/index.html",
 		"templates/header.html",
 		"templates/footer.html",
 		"templates/settings.html",
+		"templates/database_list.html",
 		"templates/dataset.html",
 		"templates/control.html")
 	if err != nil {
@@ -160,9 +296,15 @@ func prepareIndexData() app.IndexData {
 	Settings.PostgresConnectionString = app.Config.Postgres.ConnectionString
 	Settings.PostgresStatus = app.Config.Postgres.ConnectionStatus
 
+	databases, err := valkey.GetDatabases()
+	if err != nil {
+		log.Printf("Error: Getting databases: %v", err)
+	}
+
 	data := app.IndexData{
 		LoadConfig: LoadConfig,
 		Settings:   Settings,
+		Databases:  databases,
 	}
 
 	return data
@@ -331,6 +473,7 @@ func settingsDBConnections(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 	}
 }
+
 func settingsLoad(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
