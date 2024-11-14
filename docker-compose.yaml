@@ -12,8 +12,8 @@ services:
   postgres:
     image: "percona/percona-distribution-postgresql:16.2-multi"
     environment:
-      POSTGRES_PASSWORD: password
-      POSTGRES_USER: postgres
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
       LANG: en_US.utf8
       PGDATA: /data/db
     volumes:
@@ -100,13 +100,13 @@ services:
         condition: service_healthy
     environment:
       PMM_AGENT_SERVER_ADDRESS: pmm-server
-      PMM_AGENT_SERVER_USERNAME: admin
-      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_USERNAME: ${PMM_SERVER_USER}
+      PMM_AGENT_SERVER_PASSWORD: ${PMM_SERVER_PASSWORD}
       PMM_AGENT_SERVER_INSECURE_TLS: 1
       PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
       PMM_AGENT_SETUP: 1
       PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor"
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=${PG_USER} --password=${PG_PASSWORD} --host=postgres --port=5432 --query-source=pgstatmonitor"
 
   pmm-client-mysql:
     image: "percona/pmm-server:2"
@@ -119,13 +119,13 @@ services:
         condition: service_healthy
     environment:
       PMM_AGENT_SERVER_ADDRESS: pmm-server
-      PMM_AGENT_SERVER_USERNAME: admin
-      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_USERNAME: ${PMM_SERVER_USER}
+      PMM_AGENT_SERVER_PASSWORD: ${PMM_SERVER_PASSWORD}
       PMM_AGENT_SERVER_INSECURE_TLS: 1
       PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
       PMM_AGENT_SETUP: 1
       PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306"
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=${MYSQL_USER} --password=${MYSQL_PASSWORD} --host=mysql --port=3306"
 
   pmm-client-mongodb:
     image: "percona/pmm-server:2"
@@ -136,13 +136,13 @@ services:
         condition: service_healthy
     environment:
       PMM_AGENT_SERVER_ADDRESS: pmm-server
-      PMM_AGENT_SERVER_USERNAME: admin
-      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_USERNAME: ${PMM_SERVER_USER}
+      PMM_AGENT_SERVER_PASSWORD: ${PMM_SERVER_PASSWORD}
       PMM_AGENT_SERVER_INSECURE_TLS: 1
       PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
       PMM_AGENT_SETUP: 1
       PMM_AGENT_SETUP_FORCE: 1
-      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=root --password=password --host=mongodb --port=27017 --query-source=profiler"
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=${MONGODB_USER} --password=${MONGODB_PASSWORD} --host=mongodb --port=27017 --query-source=profiler"
 
 volumes:
   mongodata:
