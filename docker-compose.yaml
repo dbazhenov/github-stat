@@ -1,6 +1,5 @@
-version: '3.7'
+version: "3.7"
 services:
-
   valkey:
     image: valkey/valkey:8
     environment:
@@ -11,7 +10,7 @@ services:
       - valkey_data:/data
 
   postgres:
-    image: percona/percona-distribution-postgresql:16.2-multi
+    image: "percona/percona-distribution-postgresql:16.2-multi"
     environment:
       POSTGRES_PASSWORD: password
       POSTGRES_USER: postgres
@@ -19,8 +18,8 @@ services:
       PGDATA: /data/db
     volumes:
       - pgdata:/data/db
-      - ./data/init/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports: 
+      - ${DATA_INIT_FOLDER}/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
       - "5432:5432"
     # command: >
     #   bash -c "
@@ -33,29 +32,38 @@ services:
     #   "
 
   mongodb:
-    image: "percona/percona-server-mongodb:7.0-arm64"
+    image: "percona/percona-server-mongodb:7.0-multi"
     volumes:
       - mongodata:/data/db
-      - ./data/init/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
-      - ./data/init/mongodb/mongod.conf:/etc/mongod.conf:ro
+      - ${DATA_INIT_FOLDER}/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+      - ${DATA_INIT_FOLDER}/mongodb/mongod.conf:/etc/mongod.conf:ro
     environment:
       MONGO_INITDB_ROOT_USERNAME: databaseAdmin
       MONGO_INITDB_ROOT_PASSWORD: password
       MONGO_INITDB_DATABASE: github
-    ports: 
+    ports:
       - "27017:27017"
     command: ["mongod", "--config", "/etc/mongod.conf"]
-      
+
   mysql:
     image: "percona/percona-server:8.3.0-1.1-multi"
     volumes:
       - mysqldata:/var/lib/mysql
-      - ./data/init/mysql:/docker-entrypoint-initdb.d
+      - ${DATA_INIT_FOLDER}/mysql:/docker-entrypoint-initdb.d
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: github
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-uroot", "-proot-password"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-uroot",
+          "-proot-password",
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -66,25 +74,25 @@ services:
       --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
 
   pmm-server:
-      image: percona/pmm-server:2
-      platform: "linux/amd64"
-      container_name: pmm-server
-      restart: always
-      ports:
-        - 8081:80
-        - 443:443
-      volumes:
-        - pmm-data:/srv
-      environment:
-        - DISABLE_TELEMETRY=0
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost"]
-        interval: 30s
-        timeout: 10s
-        retries: 5
+    image: "percona/pmm-server:2"
+    platform: "linux/amd64"
+    container_name: pmm-server
+    restart: always
+    ports:
+      - 8081:80
+      - 443:443
+    volumes:
+      - pmm-data:/srv
+    environment:
+      - DISABLE_TELEMETRY=0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   pmm-client-postgres:
-    image: percona/pmm-client:2
+    image: "percona/pmm-server:2"
     platform: "linux/amd64"
     container_name: pmm-client-postgres
     depends_on:
@@ -101,7 +109,7 @@ services:
       PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor"
 
   pmm-client-mysql:
-    image: percona/pmm-client:2
+    image: "percona/pmm-server:2"
     platform: "linux/amd64"
     container_name: pmm-client-mysql
     depends_on:
@@ -120,7 +128,7 @@ services:
       PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306"
 
   pmm-client-mongodb:
-    image: percona/pmm-client:2
+    image: "percona/pmm-server:2"
     platform: "linux/amd64"
     container_name: pmm-client-mongodb
     depends_on:
