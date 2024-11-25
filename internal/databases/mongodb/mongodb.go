@@ -11,25 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-
-	app "github-stat/internal"
 )
-
-func Connect(envVars app.EnvVars, ctx context.Context) (*mongo.Client, error) {
-
-	ApplyURI := fmt.Sprintf("mongodb://%s:%s@%s:%s/", envVars.MongoDB.User, envVars.MongoDB.Password, envVars.MongoDB.Host, envVars.MongoDB.Port)
-
-	log.Printf("Databases: MongoDB: Start: Connect to: %s", envVars.MongoDB.Host)
-
-	clientOptions := options.Client().ApplyURI(ApplyURI)
-	mongodb, err := mongo.Connect(ctx, clientOptions)
-	if err != nil {
-		log.Printf("MySQL Error: %s", err)
-		return nil, err
-	}
-
-	return mongodb, nil
-}
 
 func ConnectByString(connection_string string, ctx context.Context) (*mongo.Client, error) {
 
@@ -43,35 +25,162 @@ func ConnectByString(connection_string string, ctx context.Context) (*mongo.Clie
 	return mongodb, nil
 }
 
-func GetConnectionString(envVars app.EnvVars) string {
-	return fmt.Sprintf("mongodb://%s:%s@%s:%s/",
-		envVars.MongoDB.User,
-		envVars.MongoDB.Password,
-		envVars.MongoDB.Host,
-		envVars.MongoDB.Port)
-}
-
+// CheckMongoDB checks the connection to the MongoDB server using the provided connection string.
+// It returns "Connected" if the connection is successful, otherwise it returns the error message.
+//
+// Arguments:
+//   - connectionString: string containing the MongoDB connection string.
+//
+// Returns:
+//   - string: "Connected" if successful, otherwise the error message.
 func CheckMongoDB(connectionString string) string {
-	client, err := mongo.NewClient(options.Client().ApplyURI(connectionString))
-	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
-	}
-
+	// Set a timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = client.Connect(ctx)
+	// Use the ConnectByString function to connect to MongoDB
+	client, err := ConnectByString(connectionString, ctx)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return fmt.Sprintf("Error connecting to MongoDB: %v", err)
 	}
-	defer client.Disconnect(ctx)
+	defer func() {
+		if disconnectErr := client.Disconnect(ctx); disconnectErr != nil {
+			log.Printf("Error disconnecting from MongoDB: %v", disconnectErr)
+		}
+	}()
 
+	// Ping the MongoDB server
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return fmt.Sprintf("Error pinging MongoDB: %v", err)
 	}
 
 	return "Connected"
+}
+
+func DeleteSchema(connectionString string, dbName string) error {
+	ctx := context.Background()
+	mongo, err := ConnectByString(connectionString, ctx)
+	if err != nil {
+		log.Printf("Error: MongoDB: Connect: %v", err)
+		return err
+	}
+	defer mongo.Disconnect(ctx)
+
+	dbList, err := mongo.ListDatabaseNames(ctx, bson.M{})
+	if err != nil {
+		log.Printf("Error listing databases: %v", err)
+		return err
+	}
+
+	dbExists := false
+	for _, db := range dbList {
+		if db == dbName {
+			dbExists = true
+			break
+		}
+	}
+
+	if dbExists {
+		log.Printf("Database %s exists, deleting database", dbName)
+		err = mongo.Database(dbName).Drop(ctx)
+		if err != nil {
+			log.Printf("Error deleting database %s: %v", dbName, err)
+			return err
+		}
+		log.Printf("Database %s deleted successfully", dbName)
+	} else {
+		log.Printf("Database %s does not exist", dbName)
+	}
+
+	return nil
+}
+
+// GetPullsLatestUpdates retrieves the latest update times for each repository from a MongoDB database.
+// It connects to the MongoDB database using the provided connection string and queries the update times.
+//
+// Arguments:
+//   - dbConfig: map[string]string containing the database configuration,
+//     including the connection string under the key "connectionString".
+//
+// Returns:
+//   - map[string]string: A map where keys are repository names and values are the latest update times.
+//   - error: An error object if an error occurs, otherwise nil.
+func GetPullsLatestUpdates(dbConfig map[string]string) (map[string]string, error) {
+	ctx := context.Background()
+
+	// Connect to the MongoDB database.
+	client, err := ConnectByString(dbConfig["connectionString"], ctx)
+	if err != nil {
+		log.Printf("MongoDB: Connect Error: message: %s", err)
+		return nil, err
+	}
+	defer client.Disconnect(ctx)
+
+	db := client.Database(dbConfig["database"])
+	collection := db.Collection("pulls")
+
+	// Define the aggregation pipeline to get the latest update times.
+	pipeline := mongo.Pipeline{
+		{{Key: "$sort", Value: bson.D{{Key: "updatedat", Value: -1}}}},
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: "$repo"},
+			{Key: "updatedat", Value: bson.D{{Key: "$first", Value: "$updatedat"}}},
+		}}},
+	}
+
+	cursor, err := collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	lastUpdates := make(map[string]string)
+	for cursor.Next(ctx) {
+		var result struct {
+			Repo      string    `bson:"_id"`
+			UpdatedAt time.Time `bson:"updatedat"`
+		}
+		if err := cursor.Decode(&result); err != nil {
+			return nil, err
+		}
+		lastUpdates[result.Repo] = result.UpdatedAt.UTC().Format(time.RFC3339)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	return lastUpdates, nil
+}
+
+// CreateIndex creates an index in the specified collection using the provided keys and options.
+// It ensures that the combination of specified keys is unique.
+//
+// Arguments:
+//   - client: *mongo.Client to connect to the MongoDB server.
+//   - dbName: string containing the name of the database.
+//   - collectionName: string containing the name of the collection.
+//   - indexKeys: bson.D containing the keys for the index.
+//   - unique: bool indicating whether the index should be unique.
+//
+// Returns:
+//   - error: An error object if an error occurs, otherwise nil.
+func CreateIndex(client *mongo.Client, dbName string, collectionName string, indexKeys bson.D, unique bool) error {
+	ctx := context.Background()
+
+	collection := client.Database(dbName).Collection(collectionName)
+
+	indexModel := mongo.IndexModel{
+		Keys:    indexKeys,
+		Options: options.Index().SetUnique(unique),
+	}
+
+	_, err := collection.Indexes().CreateOne(ctx, indexModel)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetUniqueIntegers(client *mongo.Client, dbName, collectionName string, key string) ([]int64, error) {

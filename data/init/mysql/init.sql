@@ -28,12 +28,7 @@ CREATE TABLE IF NOT EXISTS pullsTest (
     INDEX idx_id (id)
 );
 
-CREATE TABLE IF NOT EXISTS reports_runs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    data JSON
-);
-
-CREATE TABLE IF NOT EXISTS reports_databases (
+CREATE TABLE IF NOT EXISTS reports_dataset (
     id INT AUTO_INCREMENT PRIMARY KEY,
     data JSON
 );

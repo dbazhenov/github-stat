@@ -23,17 +23,5 @@ data:
   VALKEY_ADDR: valkey-service
   VALKEY_PORT: "6379"
   VALKEY_DB: "0"
-  MONGODB_USER: databaseAdmin
-  MONGODB_DB: dataset
-  MONGODB_HOST: "localhost"
-  MONGODB_PORT: "27017"
-  PG_USER: postgres
-  PG_DB: dataset
-  PG_HOST: "localhost"
-  PG_PORT: "5432"
-  MYSQL_USER: root
-  MYSQL_DB: dataset
-  MYSQL_HOST: "localhost"
-  MYSQL_PORT: "3306"
   DELAY_MINUTES: "3"
   DEBUG: "true"

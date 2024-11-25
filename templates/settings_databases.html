@@ -1,0 +1,81 @@
+{{ define "settings_databases" }}
+<h3>Database List</h3>
+<div id="databaseList">
+  {{ range .Databases }}
+  <div class="database-item mb-2 p-3 border rounded">
+    <form id="formDatabases-{{ .id }}">
+      <h4>
+        {{ if eq .dbType "mysql" }}MySQL{{ end }}
+        {{ if eq .dbType "postgres" }}PostgreSQL{{ end }}
+        {{ if eq .dbType "mongodb" }}MongoDB{{ end }}
+        <span class="text-muted">/ id: {{ .id }}</span>
+      </h4>
+      <input type="hidden" id="type-{{ .id }}" name="dbType" value="{{ .dbType }}">
+      <div class="mb-1">
+        <label for="connectionString-{{ .id }}" class="form-label">Connection String</label>
+        <input type="text" class="form-control" id="connectionString-{{ .id }}" name="connectionString" value="{{ .connectionString }}">
+      </div>
+      {{ if eq .dbType "mongodb" }}
+      <div class="mb-1">
+        <label for="database-{{ .id }}" class="form-label">Database</label>
+        <input type="text" class="form-control" id="database-{{ .id }}" name="database" value="{{ .database }}">
+      </div>
+      {{ end }}
+      <div class="mb-1"> 
+        <label for="position-{{ .id }}" class="form-label">Position</label> 
+        <input type="number" class="form-control" id="position-{{ .id }}" name="position" value="{{ .position }}">
+      </div>
+      <div class="form-check form-switch my-4">
+        <input class="form-check-input" type="checkbox" id="loadSwitch-{{ .id }}" name="loadSwitch" {{ if eq .loadSwitch "true" }}checked{{ end }}>
+        <label class="form-check-label" for="loadSwitch-{{ .id }}">Enable Load</label>
+      </div>
+      <hr>
+      <button type="button" class="btn btn-primary" onclick="updateDatabase('{{ .id }}')">Update connection</button>
+      <button type="button" class="btn btn-danger" onclick="deleteDatabase('{{ .id }}')">Delete connection</button>
+      
+      {{ if ne .dbType "mongodb" }}
+        {{ if eq .schemaStatus "false" }}
+          <button type="button" class="btn btn-secondary" onclick="createSchema('{{ .id }}')" id="createSchema-{{ .id }}">Create Schema</button>
+          <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}" style="display: none;">Delete Schema</button>
+        {{ else }}
+          <button type="button" class="btn btn-secondary" onclick="createSchema('{{ .id }}')" id="createSchema-{{ .id }}" style="display: none;">Create Schema</button>
+          <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}">Delete Schema</button>
+        {{ end }}
+      {{ else }}
+        <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}">Delete database</button>
+      {{ end }}
+
+      {{ if eq .datasetStatus "Waiting" }}
+        <button type="button" class="btn btn-warning" id="stopImportDataset-{{ .id }}" onclick="stopImportDataset('{{ .id }}')">Stop Import Dataset</button>
+      {{ else }}
+        <button type="button" class="btn btn-warning" id="stopImportDataset-{{ .id }}" onclick="stopImportDataset('{{ .id }}')" style="display: none;">Stop Import Dataset</button>
+      {{ end }}
+
+      {{ if .datasetStatus }}
+        {{ if eq .datasetStatus "Done" }}
+          <button type="button" class="btn btn-info" id="importDataset-{{ .id }}" onclick="importDataset('{{ .id }}')">Update Dataset</button>
+        {{ else if eq .datasetStatus "Waiting" }}
+          <button type="button" class="btn btn-info" id="importDataset-{{ .id }}" onclick="importDataset('{{ .id }}')" style="display: none;">Import Dataset</button>
+        {{ end }}
+        <div id="datasetStatus-{{ .id }}" class="dataset-status mt-2">Dataset Status: {{ .datasetStatus }}</div>
+      {{ else }}
+        <button type="button" class="btn btn-info" id="importDataset-{{ .id }}" onclick="importDataset('{{ .id }}')">Import Dataset</button>
+        <div id="datasetStatus-{{ .id }}" class="dataset-status mt-2" style="display: none;"></div>
+      {{ end }}
+      
+      <div id="connectionStatus-{{ .id }}" class="status-message mt-2">Connection status: {{ .connectionStatus }}</div>
+
+      {{ if .updateStatus }}
+        <div id="updateStatus-{{ .id }}" class="update-status mt-2">{{ .updateStatus }}</div>
+      {{ else }}
+        <div id="updateStatus-{{ .id }}" class="update-status mt-2" style="display: none;"></div>
+      {{ end }}
+    </form>
+  </div>
+  {{ else }}
+  <div class="no-databases text-center my-4 p-3 border rounded">
+    <p>No databases found. Please create a database using the form above.</p>
+  </div>
+  {{ end }}
+</div>
+{{ end }}

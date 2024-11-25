@@ -32,17 +32,12 @@ CREATE TABLE IF NOT EXISTS github.pulls_test (
     PRIMARY KEY (id, repo)
 );
 
+CREATE TABLE IF NOT EXISTS github.reports_dataset (
+    id SERIAL PRIMARY KEY,
+    data JSONB
+);
+
 CREATE INDEX idx_id_pulls ON github.pulls (id);
 CREATE INDEX idx_repo_pulls ON github.pulls (repo);
 CREATE INDEX idx_id_pulls_test ON github.pulls_test (id);
 CREATE INDEX idx_repo_pulls_test ON github.pulls_test (repo);
-
-CREATE TABLE IF NOT EXISTS github.reports_runs (
-    id SERIAL PRIMARY KEY,
-    data JSONB
-);
-
-CREATE TABLE IF NOT EXISTS github.reports_databases (
-    id SERIAL PRIMARY KEY,
-    data JSONB
-);

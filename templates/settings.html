@@ -35,47 +35,119 @@
         </div>
       </div>
 
-    {{ template "database_list" . }}
+    {{ template "settings_databases" . }}
 
     </div>
     <div class="tab-pane fade" id="sleep-settings" role="tabpanel" aria-labelledby="sleep-settings-tab">
-      <h3 class="mt-3">Load Generator Settings</h3>
-      <p>A separate go routine is opened for each connection to the database. In each go routine an infinite loop with queries to the database is executed. If the number of parallel connections is large and the number of CPUs is small, throttling and CPU queue may occur. To avoid this, add Sleep, which will be executed in each query cycle.</p>
-      <form id="sleepSettingsForm" class="my-4">
-        <div class="mb-3 my-3">
-          <label for="mysqlSleep" class="form-label">MySQL Sleep (Millisecond)</label>
-          <input type="number" class="form-control" id="mysqlSleep" name="mysqlSleep" value="{{ .LoadConfig.MySQLSleep }}">
-        </div>
-        <div class="mb-3 my-3">
-          <label for="mongodbSleep" class="form-label">MongoDB Sleep (Millisecond)</label>
-          <input type="number" class="form-control" id="mongodbSleep" name="mongodbSleep" value="{{ .LoadConfig.MongoDBSleep }}">
-        </div>
-        <div class="mb-3 my-3">
-          <label for="postgresqlSleep" class="form-label">PostgreSQL Sleep (Millisecond)</label>
-          <input type="number" class="form-control" id="postgresqlSleep" name="postgresqlSleep" value="{{ .LoadConfig.PostgresSleep }}">
-        </div>
-  
-        <button type="submit" class="btn btn-primary">Save Sleep Settings</button>
-      </form>
+
+    {{ template "settings_load" . }}
+      
     </div>
 </div>
 
 <script>
 
+    function deleteSchema(id) {
+        const form = $(`#formDatabases-${id}`)[0];
+        const formData = new FormData(form);
+        formData.append('delete_schema', 'true');
+
+        fetch(`/update_db/${id}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('deleteSchema:', data.connectionStatus);
+            console.log('deleteSchema:', data.updateStatus);
+            loadDatabaseList();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            $(`#connectionStatus-${id}`).text("Schema deletion failed");
+        });
+    }
+
+    function createSchema(id) {
+        const form = $(`#formDatabases-${id}`)[0];
+        const formData = new FormData(form);
+        formData.append('init_schema', 'true');
+
+        fetch(`/update_db/${id}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('createSchema: Connection: ', data.connectionStatus);
+            console.log('createSchema: Update: ', data.updateStatus);
+            loadDatabaseList();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            $(`#connectionStatus-${id}`).text("Schema creation failed");
+        });
+    }
+
+    function importDataset(id) {
+        const formData = new FormData();
+        formData.append('action', 'import');
+
+        fetch(`/manage-dataset/${id}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            $(`#datasetStatus-${id}`).text(`Dataset Status: ${data.datasetStatus}`).show();
+            if (data.datasetStatus === 'Waiting') {
+                $(`#importDataset-${id}`).hide();
+                $(`#stopImportDataset-${id}`).show();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while adding the import task');
+        });
+    }
+
+    function stopImportDataset(id) {
+        const formData = new FormData();
+        formData.append('action', 'stop');
+
+        fetch(`/manage-dataset/${id}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "success") {
+                $(`#datasetStatus-${id}`).hide();
+                $(`#importDataset-${id}`).show();
+                $(`#stopImportDataset-${id}`).hide();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while stopping the import task');
+        });
+    }
+
     function updateDatabase(id) {
-        const form = $(`#form-${id}`);
+        const form = $(`#formDatabases-${id}`);
         const data = form.serialize();
 
         $.ajax({
-        type: 'POST',
-        url: `/update_db/${id}`,
-        data: data,
-        success: function(response) {
-            alert('Database updated successfully');
-        },
-        error: function(xhr, status, error) {
-            alert('Error: ' + error);
-        }
+            type: 'POST',
+            url: `/update_db/${id}`,
+            data: data,
+            success: function(response) {
+                loadDatabaseList();
+            },
+            error: function(xhr, status, error) {
+                alert('Error: ' + error);
+                $(`#connectionStatus-${id}`).text("Update failed");
+            }
         });
     }
 
@@ -84,7 +156,7 @@
             $.ajax({
                 type: 'POST',
                 url: `/delete_db`,
-                data: { id: id }, // Передаем ID как часть данных запроса
+                data: { id: id },
                 success: function(response) {
                     alert('Database deleted successfully');
                     loadDatabaseList();
@@ -108,10 +180,10 @@
         dbTypeSelect.addEventListener('change', function() {
         if (dbTypeSelect.value === 'mongodb') {
             mongodbDatabaseField.style.display = 'block';
-            connectionStringInput.value = 'mongodb://databaseAdmin:password@localhost:27017/';
+            connectionStringInput.value = 'mongodb://root:password@localhost:27017/';
         } else if (dbTypeSelect.value === 'mysql') {
             mongodbDatabaseField.style.display = 'none';
-            connectionStringInput.value = 'root:password@tcp(localhost:3306)/dataset';
+            connectionStringInput.value = 'root:password@tcp(localhost:3306)/demo';
         } else if (dbTypeSelect.value === 'postgres') {
             mongodbDatabaseField.style.display = 'none';
             connectionStringInput.value = "user=postgres password='password' dbname=dataset host=localhost port=5432 sslmode=disable";
@@ -120,43 +192,43 @@
         }
         });
     
-      $('#createForm').on('submit', function(event) {
-        event.preventDefault();
-        const createMessage = $('#createMessage');
-        createMessage.empty();
-  
-        $.ajax({
-          type: 'POST',
-          url: '/create_db',
-          data: $(this).serialize(),
-          success: function(response) {
-            createMessage.css('color', 'green').text('Connection created successfully.');
-            loadDatabaseList();
-          },
-          error: function(xhr, status, error) {
-            createMessage.css('color', 'red').text('Error: ' + error);
-          }
+        $('#createForm').on('submit', function(event) {
+            event.preventDefault();
+            const createMessage = $('#createMessage');
+            createMessage.empty();
+
+            $.ajax({
+                type: 'POST',
+                url: '/create_db',
+                data: $(this).serialize(),
+                success: function(response) {
+                    createMessage.css('color', 'green').text('Connection created successfully.');
+                    loadDatabaseList();
+                },
+                error: function(xhr, status, error) {
+                    createMessage.css('color', 'red').text('Error: ' + error);
+                }
+            });
         });
-      });
- 
-  
-      // Load the database list when the page is loaded
-    //   loadDatabaseList();
-  
-      $('#sleepSettingsForm').on('submit', function(event) {
-        event.preventDefault();
-        $.ajax({
-          type: 'POST',
-          url: '/settings_load',
-          data: $(this).serialize(),
-          success: function(response) {
-            alert('Sleep settings saved successfully');
-          },
-          error: function(xhr, status, error) {
-            alert('Error: ' + error);
-          }
+
+        $('#sleepSettingsForm').on('submit', function(event) {
+            event.preventDefault();
+            $.ajax({
+                type: 'POST',
+                url: '/settings_load',
+                data: $(this).serialize(),
+                success: function(response) {
+                    $('#statusMessage').html('<div class="alert alert-success">Sleep settings saved successfully</div>');
+                },
+                error: function(xhr, status, error) {
+                    let errorMessage = error;
+                    if (xhr.responseText) {
+                        errorMessage = xhr.responseText;
+                    }
+                    $('#statusMessage').html('<div class="alert alert-danger">Error: ' + errorMessage + '</div>');
+                }
+            });
         });
-      });
     });
 </script>
 {{ end }}

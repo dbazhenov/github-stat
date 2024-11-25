@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -21,52 +22,683 @@ import (
 	"github-stat/internal/databases/postgres"
 	"github-stat/internal/databases/valkey"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/go-github/github"
-	_ "github.com/lib/pq"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"golang.org/x/sync/errgroup"
 )
 
-func main() {
+// allPullsData stores pull request data for each repository.
+// The outer map key is the repository name, and the inner map key is the pull request ID.
+var allPullsData map[string]map[int64]*github.PullRequest = make(map[string]map[int64]*github.PullRequest)
 
+// allReposData stores repository data.
+// The map key is the repository ID.
+var allReposData map[int64]*github.Repository = make(map[int64]*github.Repository)
+
+// databases holds the configuration for each database.
+var databases []map[string]string
+
+// statusData holds the current status of the dataset update process.
+var statusData string
+
+// maxHeapAlloc keeps track of the maximum heap allocation observed.
+var maxHeapAlloc uint64
+
+// main is the entry point of the application. It initializes the configuration, starts the dataset update process,
+// starts the process to update databases, and keeps the main function running indefinitely.
+func main() {
 	// Get the configuration from environment variables or .env file.
-	// app.Config - contains all environment variables
 	app.InitConfig()
 
-	// Valkey client (valkey.Valkey) initialization
+	// Initialize the Valkey client (valkey.Valkey)
 	valkey.InitValkey(app.Config)
 	defer valkey.Valkey.Close()
 
+	// Initialize status to "Initializing"
+	statusData = "Initializing"
+
+	// Start the dataset data update process in a separate goroutine
+	go updateDatasetData()
+
+	// Start the process to update databases from Valkey in a separate goroutine
+	go updateDatabases()
+
+	// Keep the main function running
+	select {}
+}
+
+// updateDatabases periodically checks and updates the status of databases from Valkey.
+// It processes each database by writing data from memory into the database based on its type.
+func updateDatabases() {
 	for {
-
-		checkConnectSettings()
-
-		// The main process of getting data from GitHub API and store it into MySQL, PostgreSQL, MongoDB databases.
-
-		if app.Config.App.DatasetLoadType == "github_chunks" {
-			fetchGitHubDataInChunks(app.Config)
-		} else if app.Config.App.DatasetLoadType == "github_consistent" {
-			fetchGitHubData(app.Config)
-		} else {
-			importCSVToDB(app.Config)
+		// Wait until the status is no longer "Initializing"
+		for statusData == "Initializing" {
+			time.Sleep(1 * time.Second)
 		}
+
+		var err error
+		databases, err = valkey.GetDatabases()
+		if err != nil {
+			log.Printf("Check Databases: Error: %v", err)
+		} else {
+
+			for _, db := range databases {
+				if db["datasetStatus"] == "Waiting" {
+					log.Printf("Processing Database ID: %s, Type: %s", db["id"], db["dbType"])
+
+					// Set status to In Progress before starting the work
+					err = updateDatabaseStatus(db["id"], "In Progress")
+					if err != nil {
+						continue
+					}
+
+					switch db["dbType"] {
+					case "mysql":
+						go func(db map[string]string) {
+
+							err := writeDataFromMemoryToMySQL(db)
+
+							if err != nil {
+								log.Printf("MySQL process error: %v", err)
+								updateDatabaseStatus(db["id"], "Error")
+							} else {
+								updateDatabaseStatus(db["id"], "Done")
+							}
+						}(db)
+
+					case "postgres":
+						go func(db map[string]string) {
+
+							err := writeDataFromMemoryToPostgres(db)
+
+							if err != nil {
+								log.Printf("Postgres process error: %v", err)
+								updateDatabaseStatus(db["id"], "Error")
+							} else {
+								updateDatabaseStatus(db["id"], "Done")
+							}
+						}(db)
+
+					case "mongodb":
+						go func(db map[string]string) {
+
+							err := writeDataFromMemoryToMongoDB(db)
+
+							if err != nil {
+								log.Printf("MongoDB process error: %v", err)
+								updateDatabaseStatus(db["id"], "Error")
+							} else {
+								updateDatabaseStatus(db["id"], "Done")
+							}
+						}(db)
+					}
+				}
+			}
+
+			log.Printf("Check Databases: Successfully updated databases")
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+}
+
+// updateStatus updates the dataset status of a given database in Valkey.
+//
+// Arguments:
+//   - dbID: string containing the database ID.
+//   - status: string containing the new status for the database.
+//
+// Returns:
+//   - error: An error object if an error occurs, otherwise nil.
+func updateDatabaseStatus(dbID, status string) error {
+	fields := map[string]string{
+		"datasetStatus": status,
+	}
+
+	err := valkey.AddDatabase(dbID, fields)
+	if err != nil {
+		log.Printf("Error updating status for database %s: %v", dbID, err)
+		return err
+	}
+
+	log.Printf("Status for database %s updated to %s", dbID, status)
+	return nil
+}
+
+// writeDataFromMemoryToPostgres imports repository and pull request data into a PostgreSQL database.
+// It connects to the PostgreSQL database using the provided connection string,
+// fetches the latest update times for each repository, and then updates the database
+// with new or updated repositories and pull requests based on their last update time.
+//
+// Arguments:
+//   - dbConfig: map[string]string containing the database configuration,
+//     including the connection string under the key "connectionString".
+//
+// Returns:
+//   - error: An error object if an error occurs, otherwise nil.
+func writeDataFromMemoryToPostgres(dbConfig map[string]string) error {
+
+	log.Printf("%s process start: %v", dbConfig["dbType"], dbConfig["id"])
+
+	// Initialize the report for tracking the import process.
+	report := app.ReportDatabases{
+		Type:          "GitHub Pulls",
+		DB:            "PostgreSQL",
+		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
+		StartedAtUnix: time.Now().UnixMilli(),
+	}
+
+	// Connect to the PostgreSQL database.
+	db, err := postgres.ConnectByString(dbConfig["connectionString"])
+	if err != nil {
+		log.Printf("Databases: PostgreSQL: Start: Error: %s", err)
+		return err
+	}
+	defer db.Close()
+
+	log.Printf("Databases: PostgreSQL: Start")
+
+	// Get the latest update times for each repository from the PostgreSQL database.
+	pullsLastUpdate, err := postgres.GetPullsLatestUpdates(dbConfig)
+	if err != nil {
+		log.Printf("Error getting latest updates: %v", err)
+		return err
+	}
+
+	// Iterate over all repositories and update the database with new or updated repositories and pull requests.
+	for _, repo := range allReposData {
+		report.Counter.Repos++
+		id := repo.ID
+		repoJSON, err := json.Marshal(repo)
+		if err != nil {
+			return err
+		}
+
+		_, err = db.Exec("INSERT INTO github.repositories (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = $2", id, repoJSON)
+		if err != nil {
+			return err
+		}
+
+		if len(allPullsData) > 0 {
+			repoName := *repo.Name
+			pullRequests, exists := allPullsData[repoName]
+			if !exists || len(pullRequests) == 0 {
+				report.Counter.ReposWithoutPRs++
+			} else {
+				report.Counter.ReposWithPRs++
+
+				// Get the last update time for the current repository.
+				pullLastUpdate := pullsLastUpdate[repoName]
+				var lastUpdatedTime time.Time
+				if pullLastUpdate != "" {
+					lastUpdatedTime, err = time.Parse(time.RFC3339, pullLastUpdate)
+					if err != nil {
+						log.Printf("Error: PostgreSQL: lastUpdatedTime: parsing startedAt: %v", err)
+						lastUpdatedTime = time.Time{} // Reset lastUpdatedTime in case of error
+					}
+				}
+
+				// Iterate over all pull requests and update the database with new or updated pull requests.
+				for _, pull := range pullRequests {
+					// Skip processing if lastUpdatedTime is not empty and the pull request is older
+					if !lastUpdatedTime.IsZero() && pull.UpdatedAt != nil && lastUpdatedTime.After(*pull.UpdatedAt) {
+						continue
+					}
+
+					id := pull.ID
+					pullJSON, err := json.Marshal(pull)
+					if err != nil {
+						return err
+					}
+
+					res, err := db.Exec("INSERT INTO github.pulls (id, repo, data) VALUES ($1, $2, $3) ON CONFLICT (id, repo) DO UPDATE SET data = $3", id, *repo.Name, pullJSON)
+					if err != nil {
+						return err
+					}
+
+					// Check if the row has been updated or inserted.
+					rowsAffected, err := res.RowsAffected()
+					if err != nil {
+						return err
+					}
+
+					if rowsAffected == 1 {
+						report.Counter.PullsInserted++
+					} else {
+						report.Counter.PullsUpdated++
+					}
+				}
+
+				report.Counter.Pulls += len(pullRequests)
+			}
+		}
+	}
+
+	// Finalize the report with end times and total duration.
+	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
+	report.FinishedAtUnix = time.Now().UnixMilli()
+	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
+	reportJSON, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	log.Printf("Datasets: PostgreSQL: Finish: Report: %s", reportJSON)
+	_, err = db.Exec("INSERT INTO github.reports_dataset (data) VALUES ($1)", reportJSON)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("%s process complete for database ID: %v", dbConfig["dbType"], dbConfig["id"])
+
+	return nil
+}
+
+// writeDataFromMemoryToMySQL imports repository and pull request data into a MySQL database.
+// It connects to the MySQL database using the provided connection string,
+// fetches the latest update times for each repository, and then updates the database
+// with new or updated repositories and pull requests based on their last update time.
+//
+// Arguments:
+//   - dbConfig: map[string]string containing the database configuration,
+//     including the connection string under the key "connectionString".
+//
+// Returns:
+//   - error: An error object if an error occurs, otherwise nil.
+func writeDataFromMemoryToMySQL(dbConfig map[string]string) error {
+	log.Printf("%s process start: %v", dbConfig["dbType"], dbConfig["id"])
+
+	// Initialize the report for tracking the import process.
+	report := app.ReportDatabases{
+		Type:          "GitHub Pulls",
+		DB:            "MySQL",
+		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
+		StartedAtUnix: time.Now().UnixMilli(),
+	}
+
+	// Connect to the MySQL database.
+	db, err := mysql.ConnectByString(dbConfig["connectionString"])
+	if err != nil {
+		log.Printf("Databases: MySQL: Error: message: %s", err)
+		return err
+	}
+	defer db.Close()
+
+	log.Printf("Databases: MySQL: Start")
+
+	// Get the latest update times for each repository from the MySQL database.
+	pullsLastUpdate, err := mysql.GetPullsLatestUpdates(dbConfig)
+	if err != nil {
+		log.Printf("Error getting latest updates: %v", err)
+		return err
+	}
+
+	// Iterate over all repositories and update the database with new or updated repositories and pull requests.
+	for _, repo := range allReposData {
+		report.Counter.Repos++
+		id := repo.ID
+		repoJSON, err := json.Marshal(repo)
+		if err != nil {
+			return err
+		}
+
+		_, err = db.Exec("INSERT INTO repositories (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?", id, repoJSON, repoJSON)
+		if err != nil {
+			return err
+		}
+
+		if len(allPullsData) > 0 {
+			repoName := *repo.Name
+
+			pullRequests, exists := allPullsData[repoName]
+			if !exists || len(pullRequests) == 0 {
+				report.Counter.ReposWithoutPRs++
+			} else {
+				report.Counter.ReposWithPRs++
+
+				// Get the last update time for the current repository.
+				pullLastUpdate := pullsLastUpdate[repoName]
+				var lastUpdatedTime time.Time
+				if pullLastUpdate != "" {
+					lastUpdatedTime, err = time.Parse(time.RFC3339, pullLastUpdate)
+					if err != nil {
+						log.Printf("Error parsing startedAt: %v", err)
+						lastUpdatedTime = time.Time{} // Reset lastUpdatedTime in case of error
+					}
+				}
+
+				// Iterate over all pull requests and update the database with new or updated pull requests.
+				for _, pull := range pullRequests {
+					// Skip processing if lastUpdatedTime is not empty and the pull request is older
+					if !lastUpdatedTime.IsZero() && pull.UpdatedAt != nil && lastUpdatedTime.After(*pull.UpdatedAt) {
+						continue
+					}
+
+					id := pull.ID
+					pullJSON, err := json.Marshal(pull)
+					if err != nil {
+						return err
+					}
+
+					res, err := db.Exec("INSERT INTO pulls (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?", id, *repo.Name, pullJSON, pullJSON)
+					if err != nil {
+						return err
+					}
+
+					rowsAffected, err := res.RowsAffected()
+					if err != nil {
+						return err
+					}
+
+					if rowsAffected == 1 {
+						report.Counter.PullsInserted++
+					} else if rowsAffected == 2 {
+						report.Counter.PullsUpdated++
+					}
+				}
+
+				report.Counter.Pulls += len(pullRequests)
+			}
+		}
+	}
+
+	// Finalize the report with end times and total duration.
+	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
+	report.FinishedAtUnix = time.Now().UnixMilli()
+	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
+
+	reportJSON, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	log.Printf("Databases: MySQL: Finish: Report: %s", reportJSON)
+	_, err = db.Exec("INSERT INTO reports_dataset (data) VALUES (?)", reportJSON)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("%s process complete for database ID: %v", dbConfig["dbType"], dbConfig["id"])
+
+	return nil
+}
+
+// writeDataFromMemoryToMongoDB imports repository and pull request data into a MongoDB database.
+// It connects to the MongoDB database using the provided connection string,
+// fetches the latest update times for each repository, and then updates the database
+// with new or updated repositories and pull requests based on their last update time.
+//
+// Arguments:
+//   - dbConfig: map[string]string containing the database configuration,
+//     including the connection string under the key "connectionString".
+//
+// Returns:
+//   - error: An error object if an error occurs, otherwise nil.
+func writeDataFromMemoryToMongoDB(dbConfig map[string]string) error {
+	log.Printf("%s process start: %v", dbConfig["dbType"], dbConfig["id"])
+
+	// Initialize the report for tracking the import process.
+	report := app.ReportDatabases{
+		Type:          "GitHub Pulls",
+		DB:            "MongoDB",
+		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
+		StartedAtUnix: time.Now().UnixMilli(),
+	}
+
+	ctx := context.Background()
+
+	// Connect to the MongoDB database.
+	client, err := mongodb.ConnectByString(dbConfig["connectionString"], ctx)
+	if err != nil {
+		log.Printf("MongoDB: Connect Error: message: %s", err)
+		return err
+	}
+	defer client.Disconnect(ctx)
+
+	log.Printf("Databases: MongoDB: Start")
+
+	db := client.Database(dbConfig["database"])
+	dbCollectionRepos := db.Collection("repositories")
+	dbCollectionPulls := db.Collection("pulls")
+
+	// Create an index by id and repo fields
+	indexKeys := bson.D{
+		{Key: "id", Value: 1},
+		{Key: "repo", Value: 1},
+	}
+	if err := mongodb.CreateIndex(client, dbConfig["database"], "pulls", indexKeys, true); err != nil {
+		log.Printf("Error: MongoDB: %s: CreateIndex: %v", dbConfig["id"], err)
+		return err
+	}
+
+	// Get the latest update times for each repository from the MongoDB database.
+	pullsLastUpdate, err := mongodb.GetPullsLatestUpdates(dbConfig)
+	if err != nil {
+		log.Printf("Error getting latest updates: %v", err)
+		return err
+	}
+
+	// Iterate over all repositories and update the database with new or updated repositories and pull requests.
+	for _, repo := range allReposData {
+		report.Counter.Repos++
+		filter := bson.M{"id": repo.ID}
+		update := bson.M{"$set": repo}
+
+		_, err := dbCollectionRepos.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+		if err != nil {
+			return err
+		}
+
+		if len(allPullsData) > 0 {
+			repoName := *repo.Name
+
+			pullRequests, exists := allPullsData[repoName]
+			if !exists || len(pullRequests) == 0 {
+				report.Counter.ReposWithoutPRs++
+			} else {
+				report.Counter.ReposWithPRs++
+
+				// Get the last update time for the current repository.
+				pullLastUpdate := pullsLastUpdate[repoName]
+				var lastUpdatedTime time.Time
+				if pullLastUpdate != "" {
+					lastUpdatedTime, err = time.Parse(time.RFC3339, pullLastUpdate)
+					if err != nil {
+						log.Printf("Error parsing startedAt: %v", err)
+						lastUpdatedTime = time.Time{} // Reset lastUpdatedTime in case of error
+					}
+				}
+
+				// Iterate over all pull requests and update the database with new or updated pull requests.
+				for _, pull := range pullRequests {
+					// Skip processing if lastUpdatedTime is not empty and the pull request is older
+					if !lastUpdatedTime.IsZero() && pull.UpdatedAt != nil && lastUpdatedTime.After(*pull.UpdatedAt) {
+						continue
+					}
+
+					filter := bson.M{"id": pull.ID, "repo": repoName}
+					update := bson.M{"$set": pull}
+
+					res, err := dbCollectionPulls.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+					if err != nil {
+						return err
+					}
+					if res.UpsertedCount > 0 {
+						report.Counter.PullsInserted++
+					} else if res.MatchedCount > 0 {
+						report.Counter.PullsUpdated++
+					}
+				}
+
+				report.Counter.Pulls += len(pullRequests)
+			}
+		}
+	}
+
+	// Finalize the report with end times and total duration.
+	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
+	report.FinishedAtUnix = time.Now().UnixMilli()
+	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
+
+	reportJSON, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	log.Printf("Databases: MongoDB: Finish: Report: %s", reportJSON)
+	dbCollectionReport := db.Collection("reports_dataset")
+	_, err = dbCollectionReport.InsertOne(ctx, report)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("%s process complete for database ID: %v", dbConfig["dbType"], dbConfig["id"])
+	return nil
+}
+
+// updateDatasetData continuously updates dataset data by importing from GitHub API or CSV files into memory.
+// It logs memory usage and waits for a specified delay before the next import cycle.
+func updateDatasetData() {
+	for {
+		log.Printf("updateDatasetData: Start import: Type %v", app.Config.App.DatasetLoadType)
+
+		// The main process of getting data from GitHub API and storing it into memory.
+		if app.Config.App.DatasetLoadType == "github" {
+			importGitHubToMemory(app.Config)
+		} else {
+			importCSVToMemory(app.Config)
+		}
+
+		log.Printf("updateDatasetData: Finish Import: Type %v", app.Config.App.DatasetLoadType)
+
+		// Log current memory usage
+		logMemoryUsage("updateDatasetData")
 
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
 		helperSleep(app.Config)
 		app.InitConfig()
-
 	}
 }
 
-func importCSVToDB(envVars app.EnvVars) error {
+// importGitHubToMemory imports data from GitHub repositories and stores it in memory.
+// It fetches all repositories and their pull requests, then updates global data structures.
+func importGitHubToMemory(envVars app.EnvVars) {
+	if statusData == "Done" {
+		statusData = "In Progress"
+		log.Printf("importGitHubData: Status: %s", statusData)
+	}
 
-	allPulls, err := getPullsCSV(envVars)
+	report := helperReportStart()
+
+	// Get all the repositories of the organization.
+	allRepos, counterReposApi, err := app.FetchGitHubRepos(envVars)
 	if err != nil {
-		log.Printf("importCSVToDB: Pulls: Error: %v", err)
-		return err
+		log.Printf("Error: FetchGitHubRepos: %v", err)
+	}
+
+	report.Timer["ApiRepos"] = time.Now().UnixMilli()
+
+	// For DEBUG mode. Keep only 4 repositories out of many to speed up the complete process.
+	allRepos = filterRepos(envVars, allRepos)
+
+	counter := map[string]*int{
+		"pulls_api_requests": new(int),
+		"pulls":              new(int),
+		"pulls_full":         new(int),
+		"pulls_latest":       new(int),
+		"repos":              new(int),
+		"repos_full":         new(int),
+		"repos_latest":       new(int),
+	}
+
+	if envVars.GitHub.Token != "" {
+		log.Printf("Check Latest Updates: Start")
+		// Get the latest Pull Requests updates to download only the new ones. Will download all Pull Requests on the first run.
+		pullsLastUpdate, err := getLatestUpdatesFromData(allRepos)
+		if err != nil {
+			log.Printf("getLatestUpdates: %v", err)
+		}
+
+		report.Timer["DBLatestUpdates"] = time.Now().UnixMilli()
+
+		// Get Pull Requests for all repositories.
+		for _, repo := range allRepos {
+			log.Printf("GitHub API: Start: Repo: %s", *repo.Name)
+
+			repoID := repo.GetID()
+			repoName := repo.GetName()
+
+			var allPulls []*github.PullRequest
+
+			allPulls, err = app.FetchGitHubPullsByRepo(envVars, repo, pullsLastUpdate, counter)
+			if err != nil {
+				log.Printf("FetchGitHubPullsByRepos: %v", err)
+			}
+
+			allReposData[repoID] = repo
+
+			allPullsData[repoName] = make(map[int64]*github.PullRequest)
+
+			for _, pull := range allPulls {
+				allPullsData[repoName][pull.GetID()] = pull
+			}
+
+			if statusData == "Initializing" && len(allPullsData) > 20 {
+				statusData = "In Progress"
+				log.Printf("importGitHubData: Status: %s", statusData)
+			}
+		}
+
+		report.Timer["ApiPulls"] = time.Now().UnixMilli()
+	}
+
+	counterMap := make(map[string]int)
+	for k, v := range counter {
+		counterMap[k] = *v
+	}
+	counterMap["repos_api_requests"] = counterReposApi
+
+	statusData = "Done"
+
+	helperReportFinish(envVars, report, counterMap)
+}
+
+// getLatestUpdatesFromData retrieves the latest update times for each repository from the in-memory data.
+// It iterates over all repositories and calculates the latest update time for each repository.
+//
+// Arguments:
+//   - allRepos: []*github.Repository containing all repositories.
+//
+// Returns:
+//   - map[string]*app.PullsLastUpdate: A map where keys are repository names and values are the latest update times.
+//   - error: An error object if an error occurs, otherwise nil.
+func getLatestUpdatesFromData(allRepos []*github.Repository) (map[string]*app.PullsLastUpdate, error) {
+	lastUpdates := make(map[string]*app.PullsLastUpdate)
+
+	for _, repo := range allRepos {
+		repoName := repo.GetName()
+		lastUpdates[repoName] = &app.PullsLastUpdate{}
+
+		if pulls, ok := allPullsData[repoName]; ok {
+			var lastUpdateTime time.Time
+			for _, pull := range pulls {
+				if pull.UpdatedAt != nil && pull.UpdatedAt.After(lastUpdateTime) {
+					lastUpdateTime = *pull.UpdatedAt
+				}
+			}
+			lastUpdates[repoName].Minimum = lastUpdateTime.Format(time.RFC3339)
+		} else {
+			lastUpdates[repoName].Force = true
+		}
+	}
+
+	return lastUpdates, nil
+}
+
+// importCSVToMemory imports data from CSV files and stores it in memory.
+// It reads repository and pull request data from CSV files and updates global data structures.
+func importCSVToMemory(envVars app.EnvVars) error {
+	report := helperReportStart()
+
+	if statusData == "Done" {
+		statusData = "In Progress"
 	}
 
 	allRepos, err := getReposCSV(envVars)
@@ -75,14 +707,39 @@ func importCSVToDB(envVars app.EnvVars) error {
 		return err
 	}
 
-	// Asynchronous writing of repositories and Pull Requests to databases (MySQL, PostgreSQL, MongoDB)
-	allPullsMap := make(map[string][]*github.PullRequest)
-	for _, pull := range allPulls {
-		repoName := pull.Base.Repo.GetName()
-		allPullsMap[repoName] = append(allPullsMap[repoName], pull)
+	report.Timer["allRepos"] = time.Now().UnixMilli()
+
+	allPulls, err := getPullsCSV(envVars)
+	if err != nil {
+		log.Printf("importCSVToDB: Pulls: Error: %v", err)
+		return err
 	}
 
-	asyncProcessDBs(envVars, allRepos, allPullsMap)
+	report.Timer["allPulls"] = time.Now().UnixMilli()
+
+	allPullsData = make(map[string]map[int64]*github.PullRequest)
+	for _, pull := range allPulls {
+		repoName := pull.Base.Repo.GetName()
+		if allPullsData[repoName] == nil {
+			allPullsData[repoName] = make(map[int64]*github.PullRequest)
+		}
+		allPullsData[repoName][pull.GetID()] = pull
+	}
+
+	allReposData = make(map[int64]*github.Repository)
+	for _, repo := range allRepos {
+		repoID := repo.GetID()
+		allReposData[repoID] = repo
+	}
+
+	statusData = "Done"
+
+	counter := map[string]int{
+		"pulls": len(allPulls),
+		"repos": len(allRepos),
+	}
+
+	helperReportFinish(envVars, report, counter)
 
 	return nil
 }
@@ -283,222 +940,56 @@ func processRepoRecords(records [][]string, allRepos []*github.Repository) ([]*g
 	return allRepos, nil
 }
 
+// downloadFileFromURL downloads a file from the given URL and saves it to a temporary file.
+// It returns the path to the downloaded file.
+//
+// Arguments:
+//   - url: string containing the URL of the file to download.
+//
+// Returns:
+//   - string: The path to the downloaded file.
+//   - error: An error object if an error occurs, otherwise nil.
 func downloadFileFromURL(url string) (string, error) {
 
+	// Extract the file extension from the URL.
 	ext := filepath.Ext(url)
 
+	// Create a temporary file to save the downloaded content.
 	tmpFile, err := os.CreateTemp("", "dataset-*"+ext)
 	if err != nil {
 		return "", err
 	}
 	defer tmpFile.Close()
 
+	// Send a GET request to the URL.
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
+	// Copy the response body to the temporary file.
 	_, err = io.Copy(tmpFile, resp.Body)
 	if err != nil {
 		return "", err
 	}
 
+	// Return the path to the downloaded file.
 	return tmpFile.Name(), nil
 }
 
-func checkConnectSettings() {
-
-	settings, _ := valkey.LoadFromValkey("db_connections")
-
-	if settings.MongoDBConnectionString != "" {
-		app.Config.MongoDB.ConnectionString = settings.MongoDBConnectionString
-	} else {
-		app.Config.MongoDB.ConnectionString = mongodb.GetConnectionString(app.Config)
-	}
-
-	if settings.MongoDBDatabase != "" {
-		app.Config.MongoDB.DB = settings.MongoDBDatabase
-	}
-
-	if app.Config.MongoDB.ConnectionString != "" {
-		app.Config.MongoDB.ConnectionStatus = mongodb.CheckMongoDB(app.Config.MongoDB.ConnectionString)
-	}
-
-	if settings.MySQLConnectionString != "" {
-		app.Config.MySQL.ConnectionString = settings.MySQLConnectionString
-	} else {
-		app.Config.MySQL.ConnectionString = mysql.GetConnectionString(app.Config)
-	}
-
-	if app.Config.MySQL.ConnectionString != "" {
-		app.Config.MySQL.ConnectionStatus = mysql.CheckMySQL(app.Config.MySQL.ConnectionString)
-	}
-
-	if settings.PostgresConnectionString != "" {
-		app.Config.Postgres.ConnectionString = settings.PostgresConnectionString
-	} else {
-		app.Config.Postgres.ConnectionString = postgres.GetConnectionString(app.Config)
-	}
-
-	if app.Config.Postgres.ConnectionString != "" {
-		app.Config.Postgres.ConnectionStatus = postgres.CheckPostgreSQL(app.Config.Postgres.ConnectionString)
-	}
-
-}
-
-func fetchGitHubDataInChunks(envVars app.EnvVars) {
-
-	report := helperReportStart()
-
-	// Get all the repositories of the organization.
-	allRepos, counterRepos, err := app.FetchGitHubRepos(envVars)
-	if err != nil {
-		log.Printf("Error: fetchGitHubDataInChunks: %v", err)
-	}
-
-	report.Timer["ApiRepos"] = time.Now().UnixMilli()
-
-	// For DEBUG mode. Let's keep only 4 repositories out of many to speed up the complete process.
-	allRepos = filterRepos(envVars, allRepos)
-
-	var allPulls []*github.PullRequest
-	counterPulls := map[string]*int{
-		"pulls_api_requests": new(int),
-		"pulls":              new(int),
-		"pulls_full":         new(int),
-		"pulls_latest":       new(int),
-		"repos":              new(int),
-		"repos_full":         new(int),
-		"repos_latest":       new(int),
-	}
-
-	if envVars.GitHub.Token != "" {
-		log.Printf("Check Latest Updates: Start")
-		// Get the latest Pull Requests updates to download only the new ones. Will download all Pull Requests on the first run.
-		pullsLastUpdate, err := getLatestUpdates(envVars, allRepos)
-		if err != nil {
-			log.Printf("getLatestUpdates: %v", err)
-		}
-
-		report.Timer["DBLatestUpdates"] = time.Now().UnixMilli()
-
-		// Get Pull Requests for all repositories.
-		for _, repo := range allRepos {
-			log.Printf("GitHub API: Start: Repo: %s", *repo.Name)
-
-			allPulls, err = app.FetchGitHubPullsByRepo(envVars, repo, pullsLastUpdate, counterPulls)
-			if err != nil {
-				log.Printf("FetchGitHubPullsByRepos: %v", err)
-			}
-
-			// Asynchronous writing of repositories and Pull Requests to databases (MySQL, PostgreSQL, MongoDB)
-			asyncProcessDBsInChunks(envVars, repo, allPulls)
-
-		}
-
-		report.Timer["ApiPulls"] = time.Now().UnixMilli()
-	}
-
-	report.Timer["DBInsert"] = time.Now().UnixMilli()
-
-	counterPullsMap := make(map[string]int)
-	for k, v := range counterPulls {
-		counterPullsMap[k] = *v
-	}
-
-	helperReportFinish(envVars, report, counterPullsMap, counterRepos)
-
-}
-
-func asyncProcessDBsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) {
-
-	ctx := context.Background()
-
-	g, _ := errgroup.WithContext(ctx)
-
-	if envVars.MySQL.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			return MySQLprocessPullsInChunks(envVars, repo, allPulls)
-		})
-	}
-
-	if envVars.Postgres.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			return PostgreSQLprocessPullsInChunks(envVars, repo, allPulls)
-		})
-	}
-
-	if envVars.MongoDB.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			return MongoDBprocessPullsInChunks(envVars, repo, allPulls)
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		log.Printf("Error: asyncProcessDBs: %v", err)
-	}
-
-}
-
-func fetchGitHubData(envVars app.EnvVars) {
-
-	if envVars.Postgres.ConnectionStatus != "Connected" &&
-		envVars.MySQL.ConnectionStatus != "Connected" &&
-		envVars.MongoDB.ConnectionStatus != "Connected" {
-		log.Printf("Error: No database connections are established.")
-		return
-	}
-
-	report := helperReportStart()
-
-	// Get all the repositories of the organization.
-	allRepos, counterRepos, err := app.FetchGitHubRepos(envVars)
-	if err != nil {
-		log.Printf("Error: FetchGitHubRepos: %v", err)
-	}
-
-	report.Timer["ApiRepos"] = time.Now().UnixMilli()
-
-	// For DEBUG mode. Let's keep only 4 repositories out of many to speed up the complete process.
-	allRepos = filterRepos(envVars, allRepos)
-
-	var allPulls map[string][]*github.PullRequest
-	var counterPulls map[string]int
-
-	if envVars.GitHub.Token != "" {
-		log.Printf("Check Latest Updates: Start")
-		// Get the latest Pull Requests updates to download only the new ones. Will download all Pull Requests on the first run.
-		pullsLastUpdate, err := getLatestUpdates(envVars, allRepos)
-		if err != nil {
-			log.Printf("getLatestUpdates: %v", err)
-		}
-
-		report.Timer["DBLatestUpdates"] = time.Now().UnixMilli()
-
-		// Get Pull Requests for all repositories.
-		allPulls, counterPulls, err = app.FetchGitHubPullsByRepos(envVars, allRepos, pullsLastUpdate)
-		if err != nil {
-			log.Printf("FetchGitHubPullsByRepos: %v", err)
-		}
-
-		report.Timer["ApiPulls"] = time.Now().UnixMilli()
-	} else {
-		allPulls = make(map[string][]*github.PullRequest)
-		counterPulls = make(map[string]int)
-	}
-
-	// Asynchronous writing of repositories and Pull Requests to databases (MySQL, PostgreSQL, MongoDB)
-	asyncProcessDBs(envVars, allRepos, allPulls)
-
-	report.Timer["DBInsert"] = time.Now().UnixMilli()
-
-	helperReportFinish(envVars, report, counterPulls, counterRepos)
-
-}
-
+// filterRepos filters the given list of repositories based on a predefined set of included repositories.
+// It returns the filtered list of repositories if the application is in debug mode.
+//
+// Arguments:
+//   - envVars: app.EnvVars containing environment variables and configuration.
+//   - allRepos: []*github.Repository containing all repositories.
+//
+// Returns:
+//   - []*github.Repository: The filtered list of repositories.
 func filterRepos(envVars app.EnvVars, allRepos []*github.Repository) []*github.Repository {
 
+	// Define the set of included repositories.
 	includedRepos := map[string]bool{
 		"pxc-docs":           true,
 		"ivee-docs":          true,
@@ -529,6 +1020,7 @@ func filterRepos(envVars app.EnvVars, allRepos []*github.Repository) []*github.R
 	}
 
 	var allReposFiltered []*github.Repository
+	// Filter repositories if the application is in debug mode.
 	if envVars.App.Debug {
 		for _, repo := range allRepos {
 			if includedRepos[*repo.Name] {
@@ -542,691 +1034,21 @@ func filterRepos(envVars app.EnvVars, allRepos []*github.Repository) []*github.R
 	return allRepos
 }
 
-func getLatestUpdates(envVars app.EnvVars, allRepos []*github.Repository) (map[string]*app.PullsLastUpdate, error) {
-	lastUpdates := make(map[string]*app.PullsLastUpdate)
-
-	ctx := context.Background()
-	g, _ := errgroup.WithContext(ctx)
-
-	var updatedMySQL, updatedPostgres, updatedMongo map[string]string
-	var errMySQL, errPostgres, errMongo error
-
-	if envVars.MySQL.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			updatedMySQL, errMySQL = getLatestUpdatesFromMySQL(envVars)
-			return errMySQL
-		})
-	}
-
-	if envVars.Postgres.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			updatedPostgres, errPostgres = getLatestUpdatesFromPostgres(envVars)
-			return errPostgres
-		})
-	}
-
-	if envVars.MongoDB.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			updatedMongo, errMongo = getLatestUpdatesFromMongoDB(envVars)
-			return errMongo
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	for _, repo := range allRepos {
-		repoName := repo.GetName()
-		if lastUpdates[repoName] == nil {
-			lastUpdates[repoName] = &app.PullsLastUpdate{}
-		}
-
-		if updatedMySQL[repoName] != "" {
-			lastUpdates[repoName].MySQL = updatedMySQL[repoName]
-		} else if envVars.MySQL.ConnectionStatus == "Connected" {
-			lastUpdates[repoName].Force = true
-		}
-
-		if updatedPostgres[repoName] != "" {
-			lastUpdates[repoName].PostgreSQL = updatedPostgres[repoName]
-		} else if envVars.Postgres.ConnectionStatus == "Connected" {
-			lastUpdates[repoName].Force = true
-		}
-
-		if updatedMongo[repoName] != "" {
-			lastUpdates[repoName].MongoDB = updatedMongo[repoName]
-		} else if envVars.MongoDB.ConnectionStatus == "Connected" {
-			lastUpdates[repoName].Force = true
-		}
-
-		lastUpdates[repoName].Minimum = findMinimumDate(
-			lastUpdates[repoName].MySQL,
-			lastUpdates[repoName].PostgreSQL,
-			lastUpdates[repoName].MongoDB,
-		)
-	}
-
-	return lastUpdates, nil
-}
-
-func asyncProcessDBs(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) {
-
-	ctx := context.Background()
-
-	g, _ := errgroup.WithContext(ctx)
-
-	if envVars.MySQL.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			return MySQLprocessPulls(envVars, allRepos, allPulls)
-		})
-	}
-
-	if envVars.Postgres.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			return PostgreSQLprocessPulls(envVars, allRepos, allPulls)
-		})
-	}
-
-	if envVars.MongoDB.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			return MongoDBprocessPulls(envVars, allRepos, allPulls)
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		log.Printf("Error: asyncProcessDBs: %v", err)
-	}
-
-}
-
-func getLatestUpdatesFromMySQL(envVars app.EnvVars) (map[string]string, error) {
-	ctx := context.Background()
-
-	db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
-	if err != nil {
-		log.Printf("MySQL: Error: message: %s", err)
-	}
-	defer db.Close()
-
-	query := `
-		SELECT
-			repo,
-			MAX(JSON_UNQUOTE(JSON_EXTRACT(data, '$.updated_at'))) AS updated_at
-		FROM
-			pulls
-		GROUP BY
-			repo
-		ORDER BY
-			updated_at DESC;
-	`
-
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	lastUpdates := make(map[string]string)
-	for rows.Next() {
-		var repo string
-		var updatedAt string
-		if err := rows.Scan(&repo, &updatedAt); err != nil {
-			return nil, err
-		}
-		lastUpdates[repo] = updatedAt
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return lastUpdates, nil
-}
-
-func getLatestUpdatesFromPostgres(envVars app.EnvVars) (map[string]string, error) {
-
-	ctx := context.Background()
-
-	db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
-	if err != nil {
-		log.Printf("Check Pulls Latest Updates: PostgreSQL: Error: %s", err)
-	}
-	defer db.Close()
-
-	query := `
-		SELECT
-			repo,
-			MAX(data->>'updated_at') AS updated_at
-		FROM
-			github.pulls
-		GROUP BY
-			repo
-		ORDER BY
-			updated_at DESC;
-	`
-
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	lastUpdates := make(map[string]string)
-	for rows.Next() {
-		var repo string
-		var updatedAt string
-		if err := rows.Scan(&repo, &updatedAt); err != nil {
-			return nil, err
-		}
-		lastUpdates[repo] = updatedAt
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return lastUpdates, nil
-}
-
-func getLatestUpdatesFromMongoDB(envVars app.EnvVars) (map[string]string, error) {
-	ctx := context.Background()
-
-	client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
-	if err != nil {
-		log.Printf("MongoDB: Connect Error: message: %s", err)
-	}
-	defer client.Disconnect(ctx)
-
-	db := client.Database(envVars.MongoDB.DB)
-	collection := db.Collection("pulls")
-
-	pipeline := mongo.Pipeline{
-		{{Key: "$sort", Value: bson.D{{Key: "updatedat", Value: -1}}}},
-		{{Key: "$group", Value: bson.D{
-			{Key: "_id", Value: "$repo"},
-			{Key: "updatedat", Value: bson.D{{Key: "$first", Value: "$updatedat"}}},
-		}}},
-	}
-
-	cursor, err := collection.Aggregate(ctx, pipeline)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	lastUpdates := make(map[string]string)
-	for cursor.Next(ctx) {
-		var result struct {
-			Repo      string    `bson:"_id"`
-			UpdatedAt time.Time `bson:"updatedat"`
-		}
-		if err := cursor.Decode(&result); err != nil {
-			return nil, err
-		}
-		lastUpdates[result.Repo] = result.UpdatedAt.UTC().Format(time.RFC3339)
-	}
-
-	if err := cursor.Err(); err != nil {
-		return nil, err
-	}
-
-	return lastUpdates, nil
-}
-
-func findMinimumDate(dates ...string) string {
-	var minDate string
-	for _, date := range dates {
-		if date != "" && (minDate == "" || date < minDate) {
-			minDate = date
-		}
-	}
-	return minDate
-}
-
-func MySQLprocessPullsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) error {
-
-	db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
-	if err != nil {
-		log.Printf("Databases: MySQL: Error: message: %s", err)
-		return err
-	}
-	defer db.Close()
-
-	log.Printf("Databases: MySQL: Start: Repo: %s, Pulls: %d", *repo.Name, len(allPulls))
-
-	id := repo.ID
-	repoJSON, err := json.Marshal(repo)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec("INSERT INTO repositories (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?", id, repoJSON, repoJSON)
-	if err != nil {
-		return err
-	}
-
-	if len(allPulls) > 0 {
-
-		for _, pull := range allPulls {
-
-			id := pull.ID
-			pullJSON, err := json.Marshal(pull)
-			if err != nil {
-				return err
-			}
-
-			_, err = db.Exec("INSERT INTO pulls (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?", id, *repo.Name, pullJSON, pullJSON)
-			if err != nil {
-				return err
-			}
-
-		}
-
-	}
-
-	return nil
-}
-
-func MySQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
-
-	report := app.ReportDatabases{
-		Type:          "GitHub Pulls",
-		DB:            "MySQL",
-		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
-		StartedAtUnix: time.Now().UnixMilli(),
-	}
-
-	db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
-	if err != nil {
-		log.Printf("Databases: MySQL: Error: message: %s", err)
-		return err
-	}
-	defer db.Close()
-
-	log.Printf("Databases: MySQL: Start")
-
-	for _, repo := range allRepos {
-		report.Counter.Repos++
-		id := repo.ID
-		repoJSON, err := json.Marshal(repo)
-		if err != nil {
-			return err
-		}
-
-		_, err = db.Exec("INSERT INTO repositories (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = ?", id, repoJSON, repoJSON)
-		if err != nil {
-			return err
-		}
-		// if envVars.App.Debug {
-		// 	log.Printf("MySQL: Repo %s: Insert repo data", *repo.FullName)
-		// }
-
-		if len(allPulls) > 0 {
-			repoName := *repo.Name
-			pullRequests, exists := allPulls[repoName]
-
-			if !exists || len(pullRequests) == 0 {
-				report.Counter.ReposWithoutPRs++
-				// if envVars.App.Debug {
-				// 	log.Printf("MySQL: Repo: %s: PRs: No pull requests found for repository", repoName)
-				// }
-			} else {
-				report.Counter.ReposWithPRs++
-				for _, pull := range pullRequests {
-					// if envVars.App.Debug {
-					// 	log.Printf("MySQL: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
-					// }
-					id := pull.ID
-					pullJSON, err := json.Marshal(pull)
-					if err != nil {
-						return err
-					}
-
-					res, err := db.Exec("INSERT INTO pulls (id, repo, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = ?", id, *repo.Name, pullJSON, pullJSON)
-					if err != nil {
-						return err
-					}
-
-					rowsAffected, err := res.RowsAffected()
-					if err != nil {
-						return err
-					}
-
-					if rowsAffected == 1 {
-						report.Counter.PullsInserted++
-					} else if rowsAffected == 2 {
-						report.Counter.PullsUpdated++
-					}
-				}
-
-				report.Counter.Pulls += len(pullRequests)
-				// if envVars.App.Debug {
-				// 	log.Printf("MySQL: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
-				// }
-			}
-		}
-	}
-
-	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
-	report.FinishedAtUnix = time.Now().UnixMilli()
-	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
-
-	reportJSON, err := json.Marshal(report)
-	if err != nil {
-		return err
-	}
-	log.Printf("Databases: MySQL: Finish: Report: %s", reportJSON)
-	_, err = db.Exec("INSERT INTO reports_databases (data) VALUES (?)", reportJSON)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func PostgreSQLprocessPullsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) error {
-
-	db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
-	if err != nil {
-		log.Printf("Databases: PostgreSQL: Start: Error: %s", err)
-		return err
-	}
-	defer db.Close()
-
-	log.Printf("Databases: Postgres: Start: Repo: %s, Pulls: %d", *repo.Name, len(allPulls))
-
-	id := repo.ID
-	repoJSON, err := json.Marshal(repo)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec("INSERT INTO github.repositories (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = $2", id, repoJSON)
-	if err != nil {
-		return err
-	}
-
-	for _, pull := range allPulls {
-
-		id := pull.ID
-		pullJSON, err := json.Marshal(pull)
-		if err != nil {
-			return err
-		}
-
-		_, err = db.Exec("INSERT INTO github.pulls (id, repo, data) VALUES ($1, $2, $3) ON CONFLICT (id, repo) DO UPDATE SET data = $3", id, *repo.Name, pullJSON)
-		if err != nil {
-			return err
-		}
-
-	}
-
-	return nil
-}
-
-func PostgreSQLprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
-
-	report := app.ReportDatabases{
-		Type:          "GitHub Pulls",
-		DB:            "PostgreSQL",
-		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
-		StartedAtUnix: time.Now().UnixMilli(),
-	}
-
-	db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
-	if err != nil {
-		log.Printf("Databases: PostgreSQL: Start: Error: %s", err)
-		return err
-	}
-	defer db.Close()
-
-	log.Printf("Databases: PostgreSQL: Start")
-
-	for _, repo := range allRepos {
-
-		report.Counter.Repos++
-		id := repo.ID
-		repoJSON, err := json.Marshal(repo)
-		if err != nil {
-			return err
-		}
-
-		_, err = db.Exec("INSERT INTO github.repositories (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = $2", id, repoJSON)
-		if err != nil {
-			return err
-		}
-		// if envVars.App.Debug {
-		// 	log.Printf("Postgres: Repo %s: Insert repo data", *repo.FullName)
-		// }
-
-		if len(allPulls) > 0 {
-			repoName := *repo.Name
-			pullRequests, exists := allPulls[repoName]
-
-			if !exists || len(pullRequests) == 0 {
-				report.Counter.ReposWithoutPRs++
-				// if envVars.App.Debug {
-				// 	log.Printf("Postgres: Repo: %s: PRs: No pull requests found for repository", repoName)
-				// }
-			} else {
-				report.Counter.ReposWithPRs++
-				for _, pull := range pullRequests {
-
-					// if envVars.App.Debug {
-					// 	log.Printf("Postgres: Repo: %s: PRs: Insert data row: %d, pull: %s", repoName, p, *pull.Title)
-					// }
-					id := pull.ID
-					pullJSON, err := json.Marshal(pull)
-					if err != nil {
-						return err
-					}
-
-					res, err := db.Exec("INSERT INTO github.pulls (id, repo, data) VALUES ($1, $2, $3) ON CONFLICT (id, repo) DO UPDATE SET data = $3", id, *repo.Name, pullJSON)
-					if err != nil {
-						return err
-					}
-
-					// Check the row has been updated or inserted.
-					rowsAffected, err := res.RowsAffected()
-					if err != nil {
-						return err
-					}
-
-					if rowsAffected == 1 {
-						report.Counter.PullsInserted++
-					} else {
-						report.Counter.PullsUpdated++
-					}
-
-				}
-
-				report.Counter.Pulls += len(pullRequests)
-				// if envVars.App.Debug {
-				// 	log.Printf("Postgres: Repo: %s: PRs: Completed: Total pull requests: %d", repoName, len(pullRequests))
-				// }
-			}
-		}
-	}
-
-	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
-	report.FinishedAtUnix = time.Now().UnixMilli()
-	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
-	reportJSON, err := json.Marshal(report)
-	if err != nil {
-		return err
-	}
-	log.Printf("Databases: PostgreSQL: Finish: Report: %s", reportJSON)
-	_, err = db.Exec("INSERT INTO github.reports_databases (data) VALUES ($1)", reportJSON)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func MongoDBprocessPullsInChunks(envVars app.EnvVars, repo *github.Repository, allPulls []*github.PullRequest) error {
-
-	ctx := context.Background()
-
-	client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
-	if err != nil {
-		log.Printf("MongoDB: Connect Error: message: %s", err)
-		return err
-	}
-	defer client.Disconnect(ctx)
-
-	log.Printf("Databases: MongoDB: Start: Repo: %s, Pulls: %d", *repo.Name, len(allPulls))
-
-	db := client.Database(envVars.MongoDB.DB)
-	dbCollectionRepos := db.Collection("repositories")
-	dbCollectionPulls := db.Collection("pulls")
-
-	// Create an index by id and repo fields
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "id", Value: 1},
-			{Key: "repo", Value: 1},
-		},
-		Options: options.Index().SetUnique(true),
-	}
-
-	_, err = dbCollectionPulls.Indexes().CreateOne(ctx, indexModel)
-	if err != nil {
-		return err
-	}
-
-	filter := bson.M{"id": repo.ID}
-	update := bson.M{"$set": repo}
-
-	_, err = dbCollectionRepos.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
-	if err != nil {
-		return err
-	}
-
-	if len(allPulls) > 0 {
-
-		repoName := *repo.Name
-
-		for _, pull := range allPulls {
-
-			filter := bson.M{"id": pull.ID, "repo": repoName}
-			update := bson.M{"$set": pull}
-
-			_, err := dbCollectionPulls.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
-			if err != nil {
-				return err
-			}
-
-		}
-
-	}
-
-	return nil
-}
-
-func MongoDBprocessPulls(envVars app.EnvVars, allRepos []*github.Repository, allPulls map[string][]*github.PullRequest) error {
-
-	report := app.ReportDatabases{
-		Type:          "GitHub Pulls",
-		DB:            "MongoDB",
-		StartedAt:     time.Now().Format("2006-01-02T15:04:05.000"),
-		StartedAtUnix: time.Now().UnixMilli(),
-	}
-
-	ctx := context.Background()
-
-	client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
-	if err != nil {
-		log.Printf("MongoDB: Connect Error: message: %s", err)
-		return err
-	}
-	defer client.Disconnect(ctx)
-
-	log.Printf("Databases: MongoDB: Start")
-
-	db := client.Database(envVars.MongoDB.DB)
-	dbCollectionRepos := db.Collection("repositories")
-	dbCollectionPulls := db.Collection("pulls")
-
-	// Create an index by id and repo fields
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "id", Value: 1},
-			{Key: "repo", Value: 1},
-		},
-		Options: options.Index().SetUnique(true),
-	}
-
-	_, err = dbCollectionPulls.Indexes().CreateOne(ctx, indexModel)
-	if err != nil {
-		return err
-	}
-
-	for _, repo := range allRepos {
-
-		report.Counter.Repos++
-		filter := bson.M{"id": repo.ID}
-		update := bson.M{"$set": repo}
-
-		_, err := dbCollectionRepos.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
-		if err != nil {
-			return err
-		}
-
-		if len(allPulls) > 0 {
-			repoName := *repo.Name
-			pullRequests, exists := allPulls[repoName]
-
-			if !exists || len(pullRequests) == 0 {
-				report.Counter.ReposWithoutPRs++
-			} else {
-				report.Counter.ReposWithPRs++
-				for _, pull := range pullRequests {
-
-					filter := bson.M{"id": pull.ID, "repo": repoName}
-					update := bson.M{"$set": pull}
-
-					res, err := dbCollectionPulls.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
-					if err != nil {
-						return err
-					}
-					if res.UpsertedCount > 0 {
-						report.Counter.PullsInserted++
-					} else if res.MatchedCount > 0 {
-						report.Counter.PullsUpdated++
-					}
-				}
-
-				report.Counter.Pulls += len(pullRequests)
-			}
-		}
-	}
-
-	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
-	report.FinishedAtUnix = time.Now().UnixMilli()
-	report.TotalMilli = report.FinishedAtUnix - report.StartedAtUnix
-
-	reportJSON, err := json.Marshal(report)
-	if err != nil {
-		return err
-	}
-	log.Printf("Databases: MongoDB: Finish: Report: %s", reportJSON)
-	dbCollectionReport := db.Collection("reports_databases")
-	_, err = dbCollectionReport.InsertOne(ctx, report)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
+// helperSleep pauses execution for a specified number of minutes.
+// The duration is defined by the DelayMinutes parameter in the environment variables.
+//
+// Arguments:
+//   - envVars: app.EnvVars containing environment variables and configuration.
 func helperSleep(envVars app.EnvVars) {
 	minutes := time.Duration(envVars.App.DelayMinutes) * time.Minute
-	log.Printf("App: The repeat run will start automatically after %v", minutes)
+	log.Printf("Dataset update memory data: The repeat run will start automatically after %v", minutes)
 	time.Sleep(minutes)
 }
 
+// helperReportStart initializes and returns a new report with the current start time and Unix timestamp.
+//
+// Returns:
+//   - app.Report: A new report with the current start time and Unix timestamp.
 func helperReportStart() app.Report {
 
 	report := app.Report{
@@ -1239,99 +1061,74 @@ func helperReportStart() app.Report {
 	return report
 }
 
-func helperReportFinish(envVars app.EnvVars, report app.Report, counterPulls map[string]int, counterRepos int) {
+// helperReportFinish finalizes the report with end times, total duration, and counter values.
+// It saves the report to the database and logs the final report.
+//
+// Arguments:
+//   - envVars: app.EnvVars containing environment variables and configuration.
+//   - report: app.Report containing the report data.
+//   - counter: map[string]int containing counter values for repositories and pull requests.
+func helperReportFinish(envVars app.EnvVars, report app.Report, counter map[string]int) {
 
-	report.Timer["ApiReposTime"] = report.Timer["ApiRepos"] - report.StartedAtUnix
-
-	if envVars.GitHub.Token != "" {
-		report.Type = "Full"
-		report.Timer["DBLatestUpdatesTime"] = report.Timer["DBLatestUpdates"] - report.Timer["ApiRepos"]
-		report.Timer["ApiPullsTime"] = report.Timer["ApiPulls"] - report.Timer["DBLatestUpdates"]
-		report.Timer["DBInsertTime"] = report.Timer["DBInsert"] - report.Timer["ApiPulls"]
-	} else {
-		report.Type = "Repos"
-		report.Timer["DBInsertTime"] = report.Timer["DBInsert"] - report.Timer["ApiRepos"]
-	}
+	report.Type = envVars.App.DatasetLoadType
 
 	report.FinishedAt = time.Now().Format("2006-01-02T15:04:05.000")
 	report.FinishedAtUnix = time.Now().UnixMilli()
 	report.FullTime = time.Now().UnixMilli() - report.StartedAtUnix
-	report.Counter = counterPulls
-	report.Counter["repos_api_requests"] = counterRepos
-	report.Databases = make(map[string]bool)
-	report.Databases["MySQL"] = envVars.MySQL.ConnectionStatus != ""
-	report.Databases["Postgres"] = envVars.Postgres.ConnectionStatus != ""
-	report.Databases["MongoDB"] = envVars.MongoDB.ConnectionStatus != ""
 
-	reportJSON, _ := json.Marshal(report)
+	counterPullsJSON, _ := json.Marshal(counter)
 
-	ctx := context.Background()
-	g, _ := errgroup.WithContext(ctx)
-
-	if envVars.MySQL.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-
-			db, err := mysql.ConnectByString(envVars.MySQL.ConnectionString)
-			if err != nil {
-				log.Printf("Databases: MySQL: Error: message: %s", err)
-				return err
-			}
-			defer db.Close()
-
-			_, err = db.Exec("INSERT INTO reports_runs (data) VALUES (?)", reportJSON)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
+	reportMap := map[string]interface{}{
+		"Type":           report.Type,
+		"StartedAtUnix":  report.StartedAtUnix,
+		"StartedAt":      report.StartedAt,
+		"FinishedAtUnix": report.FinishedAtUnix,
+		"FinishedAt":     report.FinishedAt,
+		"FullTimeMilli":  report.FullTime,
+		"Repos":          counter["repos"],
+		"Pulls":          counter["pulls"],
+		"Counter":        string(counterPullsJSON),
 	}
 
-	if envVars.Postgres.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-			db, err := postgres.ConnectByString(envVars.Postgres.ConnectionString)
-			if err != nil {
-				log.Printf("Databases: PostgreSQL: Start: Error: %s", err)
-				return err
-			}
-			defer db.Close()
-
-			_, err = db.Exec("INSERT INTO github.reports_runs (data) VALUES ($1)", reportJSON)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
+	startedAtTime, err := time.Parse("2006-01-02T15:04:05.000", report.StartedAt)
+	if err != nil {
+		log.Printf("Error parsing StartedAt: %v", err)
+		return
 	}
 
-	if envVars.MongoDB.ConnectionStatus == "Connected" {
-		g.Go(func() error {
-
-			ctx := context.Background()
-			client, err := mongodb.ConnectByString(envVars.MongoDB.ConnectionString, ctx)
-			if err != nil {
-				log.Printf("MongoDB: Connect Error: message: %s", err)
-				return err
-			}
-			defer client.Disconnect(ctx)
-
-			db := client.Database(envVars.MongoDB.DB)
-
-			dbCollectionReport := db.Collection("reports_runs")
-			_, err = dbCollectionReport.InsertOne(ctx, report)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
+	reportID := startedAtTime.Format("20060102150405")
+	if err := valkey.SaveReport(reportID, reportMap); err != nil {
 		log.Printf("Error: helperReportFinish: %v", err)
 	}
 
-	log.Printf("Successfully completed: Final Report: %s", reportJSON)
+	log.Printf("Successfully completed: Final Report: %v", reportMap)
+}
 
+// logMemoryUsage logs the current memory usage statistics for the given name.
+// It records the allocated memory, total allocated memory, system memory, heap allocated memory, number of garbage collections, and maximum heap allocated memory.
+//
+// Arguments:
+//   - name: string containing the name of the process or function for which memory usage is logged.
+func logMemoryUsage(name string) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	alloc := bToMb(m.HeapAlloc)
+
+	if alloc > maxHeapAlloc {
+		maxHeapAlloc = alloc
+	}
+
+	log.Printf("%s: Memory Usage: Alloc = %v MiB, TotalAlloc = %v MiB, Sys = %v MiB, HeapAlloc = %v MiB, NumGC = %v, MaxHeapAlloc = %v MiB",
+		name, bToMb(m.Alloc), bToMb(m.TotalAlloc), bToMb(m.Sys), alloc, m.NumGC, maxHeapAlloc)
+}
+
+// bToMb converts bytes to megabytes.
+//
+// Arguments:
+//   - b: uint64 representing the number of bytes.
+//
+// Returns:
+//   - uint64: The equivalent number of megabytes.
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }

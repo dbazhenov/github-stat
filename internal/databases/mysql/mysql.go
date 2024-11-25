@@ -12,24 +12,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/go-github/github"
-
-	app "github-stat/internal"
 )
-
-func Connect(envVars app.EnvVars) (*sql.DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
-		envVars.MySQL.User, envVars.MySQL.Password, envVars.MySQL.Host, envVars.MySQL.Port, envVars.MySQL.DB)
-
-	log.Printf("Databases: MySQL: Start: Connect to: %s", envVars.MySQL.Host)
-
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		log.Printf("MySQL Error: %s", err)
-		return nil, err
-	}
-
-	return db, nil
-}
 
 func ConnectByString(connection_string string) (*sql.DB, error) {
 
@@ -62,15 +45,6 @@ func CheckMySQL(connectionString string) string {
 	}
 
 	return "Connected"
-}
-
-func GetConnectionString(envVars app.EnvVars) string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
-		app.Config.MySQL.User,
-		app.Config.MySQL.Password,
-		app.Config.MySQL.Host,
-		app.Config.MySQL.Port,
-		app.Config.MySQL.DB)
 }
 
 func SelectInt(db *sql.DB, query string) (int, error) {
@@ -174,6 +148,62 @@ func InsertPulls(db *sql.DB, pullRequests []*github.PullRequest, table string) e
 	return nil
 }
 
+// GetLatestUpdates retrieves the latest update times for each repository from a MySQL database.
+// It connects to the MySQL database using the provided connection string and queries the update times.
+//
+// Arguments:
+//   - dbConfig: map[string]string containing the database configuration,
+//     including the connection string under the key "connectionString".
+//
+// Returns:
+//   - map[string]string: A map where keys are repository names and values are the latest update times.
+//   - error: An error object if an error occurs, otherwise nil.
+func GetPullsLatestUpdates(dbConfig map[string]string) (map[string]string, error) {
+	ctx := context.Background()
+
+	// Connect to the MySQL database.
+	db, err := ConnectByString(dbConfig["connectionString"])
+	if err != nil {
+		log.Printf("MySQL: Error: message: %s", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	query := `
+        SELECT
+            repo,
+            MAX(JSON_UNQUOTE(JSON_EXTRACT(data, '$.updated_at'))) AS updated_at
+        FROM
+            pulls
+        GROUP BY
+            repo
+        ORDER BY
+            updated_at DESC;
+    `
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	lastUpdates := make(map[string]string)
+	for rows.Next() {
+		var repo string
+		var updatedAt string
+		if err := rows.Scan(&repo, &updatedAt); err != nil {
+			return nil, err
+		}
+		lastUpdates[repo] = updatedAt
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return lastUpdates, nil
+}
+
 func CreateTable(db *sql.DB, name string) error {
 
 	query := fmt.Sprintf(`
@@ -201,7 +231,7 @@ func DropTable(db *sql.DB, name string) (string, error) {
 	return fmt.Sprintf("Table '%s' dropped successfully or did not exist.", name), nil
 }
 
-func InitDB(connection_string string) error {
+func InitSchema(connection_string string) error {
 	newDBName, err := getDbName(connection_string)
 	if err != nil {
 		log.Printf("getDbName: Error: %v\n", err)
@@ -247,8 +277,7 @@ func InitDB(connection_string string) error {
 		"CREATE TABLE IF NOT EXISTS repositoriesTest (id INT AUTO_INCREMENT PRIMARY KEY, data JSON);",
 		"CREATE TABLE IF NOT EXISTS pulls (id BIGINT NOT NULL, repo VARCHAR(255) NOT NULL, data JSON, PRIMARY KEY (id, repo), INDEX idx_repo (repo), INDEX idx_id (id));",
 		"CREATE TABLE IF NOT EXISTS pullsTest (id BIGINT NOT NULL, repo VARCHAR(255) NOT NULL, data JSON, PRIMARY KEY (id, repo), INDEX idx_repo (repo), INDEX idx_id (id));",
-		"CREATE TABLE IF NOT EXISTS reports_runs (id INT AUTO_INCREMENT PRIMARY KEY, data JSON);",
-		"CREATE TABLE IF NOT EXISTS reports_databases (id INT AUTO_INCREMENT PRIMARY KEY, data JSON);",
+		"CREATE TABLE IF NOT EXISTS reports_dataset (id INT AUTO_INCREMENT PRIMARY KEY, data JSON);",
 	}
 
 	for _, query := range schemaSQLs {
@@ -269,6 +298,46 @@ func InitDB(connection_string string) error {
 	return nil
 }
 
+func DeleteSchema(connection_string string) error {
+
+	newDBName, err := getDbName(connection_string)
+	if err != nil {
+		log.Printf("getDbName: Error: %v\n", err)
+		return err
+	}
+	log.Printf("getDbName: Database name to delete: %s", newDBName)
+
+	connectMysqlDbString := strings.Replace(connection_string, fmt.Sprintf("/%s", newDBName), "/", 1)
+	log.Printf("DeleteDB: Connect String to MySQL DB: %s", connectMysqlDbString)
+
+	mainDB, err := ConnectByString(connectMysqlDbString)
+	if err != nil {
+		log.Printf("DeleteDB: Connect to Main DB Error: %v", err)
+		return err
+	}
+	defer mainDB.Close()
+
+	dbExists, err := databaseExists(mainDB, newDBName)
+	if err != nil {
+		log.Printf("Error checking if database exists: %v", err)
+		return err
+	}
+
+	if dbExists {
+		log.Printf("Database %s exists, deleting database", newDBName)
+		err := executeSQL(mainDB, fmt.Sprintf("DROP DATABASE %s;", newDBName))
+		if err != nil {
+			log.Printf("Error deleting database %s: %v", newDBName, err)
+			return err
+		}
+		log.Printf("Database %s deleted successfully", newDBName)
+	} else {
+		log.Printf("Database %s does not exist", newDBName)
+	}
+
+	return nil
+}
+
 func getDbName(connStr string) (string, error) {
 	parts := strings.Split(connStr, "/")
 	if len(parts) < 2 {
@@ -282,16 +351,16 @@ func getDbName(connStr string) (string, error) {
 }
 
 func databaseExists(db *sql.DB, dbName string) (bool, error) {
-	var exists bool
+	var result string
 	query := fmt.Sprintf("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '%s';", dbName)
-	err := db.QueryRow(query).Scan(&exists)
+	err := db.QueryRow(query).Scan(&result)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return false, nil
 		}
 		return false, err
 	}
-	return true, nil
+	return result == dbName, nil
 }
 
 func executeSQL(db *sql.DB, query string) error {
