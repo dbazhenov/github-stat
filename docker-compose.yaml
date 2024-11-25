@@ -1,6 +1,5 @@
-version: '3.7'
+version: "3.7"
 services:
-
   valkey:
     image: valkey/valkey:8
     environment:
@@ -11,16 +10,16 @@ services:
       - valkey_data:/data
 
   postgres:
-    image: percona/percona-distribution-postgresql:16.2-multi
+    image: "percona/percona-distribution-postgresql:16.2-multi"
     environment:
-      POSTGRES_PASSWORD: password
-      POSTGRES_USER: postgres
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
       LANG: en_US.utf8
       PGDATA: /data/db
     volumes:
       - pgdata:/data/db
-      - ./data/init/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports: 
+      - ${DATA_INIT_FOLDER}/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
       - "5432:5432"
     # command: >
     #   bash -c "
@@ -33,29 +32,38 @@ services:
     #   "
 
   mongodb:
-    image: "percona/percona-server-mongodb:7.0-arm64"
+    image: "percona/percona-server-mongodb:7.0-multi"
     volumes:
       - mongodata:/data/db
-      - ./data/init/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
-      - ./data/init/mongodb/mongod.conf:/etc/mongod.conf:ro
+      - ${DATA_INIT_FOLDER}/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+      - ${DATA_INIT_FOLDER}/mongodb/mongod.conf:/etc/mongod.conf:ro
     environment:
       MONGO_INITDB_ROOT_USERNAME: databaseAdmin
       MONGO_INITDB_ROOT_PASSWORD: password
       MONGO_INITDB_DATABASE: github
-    ports: 
+    ports:
       - "27017:27017"
     command: ["mongod", "--config", "/etc/mongod.conf"]
-      
+
   mysql:
     image: "percona/percona-server:8.3.0-1.1-multi"
     volumes:
       - mysqldata:/var/lib/mysql
-      - ./data/init/mysql:/docker-entrypoint-initdb.d
+      - ${DATA_INIT_FOLDER}/mysql:/docker-entrypoint-initdb.d
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: github
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-uroot", "-proot-password"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-uroot",
+          "-proot-password",
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -65,6 +73,7 @@ services:
       --performance-schema --innodb_monitor_enable=all
       --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
 
+<<<<<<< HEAD
   # pmm-server:
   #     image: percona/pmm-server:2
   #     platform: "linux/amd64"
@@ -135,6 +144,78 @@ services:
   #     PMM_AGENT_SETUP: 1
   #     PMM_AGENT_SETUP_FORCE: 1
   #     PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=root --password=password --host=mongodb --port=27017 --query-source=profiler"
+=======
+  pmm-server:
+    image: "percona/pmm-server:2"
+    platform: "linux/amd64"
+    container_name: pmm-server
+    restart: always
+    ports:
+      - 8081:80
+      - 443:443
+    volumes:
+      - pmm-data:/srv
+    environment:
+      - DISABLE_TELEMETRY=0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  pmm-client-postgres:
+    image: "percona/pmm-server:2"
+    platform: "linux/amd64"
+    container_name: pmm-client-postgres
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: ${PMM_SERVER_USER}
+      PMM_AGENT_SERVER_PASSWORD: ${PMM_SERVER_PASSWORD}
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=${PG_USER} --password=${PG_PASSWORD} --host=postgres --port=5432 --query-source=pgstatmonitor"
+
+  pmm-client-mysql:
+    image: "percona/pmm-server:2"
+    platform: "linux/amd64"
+    container_name: pmm-client-mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      pmm-server:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: ${PMM_SERVER_USER}
+      PMM_AGENT_SERVER_PASSWORD: ${PMM_SERVER_PASSWORD}
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=${MYSQL_USER} --password=${MYSQL_PASSWORD} --host=mysql --port=3306"
+
+  pmm-client-mongodb:
+    image: "percona/pmm-server:2"
+    platform: "linux/amd64"
+    container_name: pmm-client-mongodb
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: ${PMM_SERVER_USER}
+      PMM_AGENT_SERVER_PASSWORD: ${PMM_SERVER_PASSWORD}
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=${MONGODB_USER} --password=${MONGODB_PASSWORD} --host=mongodb --port=27017 --query-source=profiler"
+>>>>>>> main
 
 volumes:
   mongodata:
