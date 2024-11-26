@@ -1,8 +1,10 @@
 package valkey
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -180,4 +182,83 @@ func SaveReport(reportID string, reportMap map[string]interface{}) error {
 
 	log.Printf("Report successfully saved with ID: %s", reportID)
 	return nil
+}
+
+// SaveDatasetLoader saves the dataset loader data to Valkey.
+func SaveDatasetLoader(data map[string]interface{}) error {
+	// Marshal the data into JSON format
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Error marshaling dataset loader data: %v", err)
+		return err
+	}
+
+	// Save the JSON string in Valkey under the key "DatasetLoader"
+	cmd := Valkey.Set("DatasetLoader", dataJSON, 0)
+	if err := cmd.Err(); err != nil {
+		log.Printf("Error saving dataset loader data in Valkey: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// GetDatasetState retrieves the dataset loader data from Valkey and returns it as a map.
+func GetDatasetState() map[string]interface{} {
+	// Get the data from Valkey
+	dataJSON, err := Valkey.Get("DatasetLoader").Result()
+	if err != nil {
+		log.Printf("Error getting dataset loader data from Valkey: %v", err)
+		return nil
+	}
+
+	// If no data is available, return an empty map
+	if dataJSON == "" {
+		return nil
+	}
+
+	// Unmarshal the JSON data into a map
+	var datasetState map[string]interface{}
+	err = json.Unmarshal([]byte(dataJSON), &datasetState)
+	if err != nil {
+		log.Printf("Error unmarshaling dataset loader data: %v", err)
+		return nil
+	}
+
+	return datasetState
+}
+
+// GetLatestDatasetReport retrieves the latest dataset report from Valkey and returns it as a map.
+func GetLatestDatasetReport() (map[string]interface{}, error) {
+	// Get all keys that match the pattern "reports_runs:*"
+	keys, err := Valkey.Keys("reports_runs:*").Result()
+	if err != nil {
+		log.Printf("Error getting report keys from Valkey: %v", err)
+		return nil, err
+	}
+
+	// Sort the keys in descending order by date
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] > keys[j]
+	})
+
+	// Get the latest report
+	if len(keys) > 0 {
+		latestKey := keys[0]
+		data, err := Valkey.HGetAll(latestKey).Result()
+		if err != nil {
+			log.Printf("Error getting latest report data from Valkey: %v", err)
+			return nil, err
+		}
+
+		// Convert the data into a map
+		report := make(map[string]interface{})
+		for k, v := range data {
+			report[k] = v
+		}
+
+		return report, nil
+	}
+
+	return nil, nil
 }

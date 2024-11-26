@@ -41,6 +41,7 @@ func CheckMongoDB(connectionString string) string {
 	// Use the ConnectByString function to connect to MongoDB
 	client, err := ConnectByString(connectionString, ctx)
 	if err != nil {
+		log.Printf("Error connecting to MongoDB: %v", err)
 		return fmt.Sprintf("Error connecting to MongoDB: %v", err)
 	}
 	defer func() {
@@ -52,6 +53,7 @@ func CheckMongoDB(connectionString string) string {
 	// Ping the MongoDB server
 	err = client.Ping(ctx, nil)
 	if err != nil {
+		log.Printf("Error pinging MongoDB: %v", err)
 		return fmt.Sprintf("Error pinging MongoDB: %v", err)
 	}
 
@@ -152,6 +154,51 @@ func GetPullsLatestUpdates(dbConfig map[string]string) (map[string]string, error
 	}
 
 	return lastUpdates, nil
+}
+
+// GetDatasetLatestUpdates retrieves the latest update times for the dataset from the reports_dataset collection.
+func GetDatasetLatestUpdates(dbConfig map[string]string) (string, error) {
+	ctx := context.Background()
+
+	// Connect to the MongoDB database.
+	client, err := ConnectByString(dbConfig["connectionString"], ctx)
+	if err != nil {
+		log.Printf("MongoDB: Connect Error: %s", err)
+		return "", err
+	}
+	defer client.Disconnect(ctx)
+
+	db := client.Database(dbConfig["database"])
+	collection := db.Collection("reports_dataset")
+
+	// Define the aggregation pipeline to get the latest update time.
+	pipeline := mongo.Pipeline{
+		{{Key: "$sort", Value: bson.D{{Key: "finishedat", Value: -1}}}},
+		{{Key: "$limit", Value: 1}},
+	}
+
+	cursor, err := collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return "", err
+	}
+	defer cursor.Close(ctx)
+
+	var lastUpdate string
+	if cursor.Next(ctx) {
+		var result struct {
+			FinishedAt string `bson:"finishedat"`
+		}
+		if err := cursor.Decode(&result); err != nil {
+			return "", err
+		}
+		lastUpdate = result.FinishedAt
+	}
+
+	if err := cursor.Err(); err != nil {
+		return "", err
+	}
+
+	return lastUpdate, nil
 }
 
 // CreateIndex creates an index in the specified collection using the provided keys and options.

@@ -10,9 +10,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	app "github-stat/internal"
@@ -55,7 +57,9 @@ func main() {
 	defer valkey.Valkey.Close()
 
 	// Initialize status to "Initializing"
-	statusData = "Initializing"
+	setStatus("Initializing")
+	// Handle termination signals
+	handleTerminationSignals()
 
 	// Start the dataset data update process in a separate goroutine
 	go updateDatasetData()
@@ -559,6 +563,10 @@ func updateDatasetData() {
 	for {
 		log.Printf("updateDatasetData: Start import: Type %v", app.Config.App.DatasetLoadType)
 
+		if statusData == "Waiting" {
+			setStatus("Running")
+		}
+
 		// The main process of getting data from GitHub API and storing it into memory.
 		if app.Config.App.DatasetLoadType == "github" {
 			importGitHubToMemory(app.Config)
@@ -566,11 +574,10 @@ func updateDatasetData() {
 			importCSVToMemory(app.Config)
 		}
 
-		log.Printf("updateDatasetData: Finish Import: Type %v", app.Config.App.DatasetLoadType)
-
 		// Log current memory usage
 		logMemoryUsage("updateDatasetData")
 
+		setStatus("Waiting")
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
 		helperSleep(app.Config)
 		app.InitConfig()
@@ -580,10 +587,6 @@ func updateDatasetData() {
 // importGitHubToMemory imports data from GitHub repositories and stores it in memory.
 // It fetches all repositories and their pull requests, then updates global data structures.
 func importGitHubToMemory(envVars app.EnvVars) {
-	if statusData == "Done" {
-		statusData = "In Progress"
-		log.Printf("importGitHubData: Status: %s", statusData)
-	}
 
 	report := helperReportStart()
 
@@ -634,15 +637,21 @@ func importGitHubToMemory(envVars app.EnvVars) {
 
 			allReposData[repoID] = repo
 
-			allPullsData[repoName] = make(map[int64]*github.PullRequest)
+			if _, exists := allPullsData[repoName]; !exists {
+				allPullsData[repoName] = make(map[int64]*github.PullRequest)
+			}
 
 			for _, pull := range allPulls {
 				allPullsData[repoName][pull.GetID()] = pull
 			}
 
-			if statusData == "Initializing" && len(allPullsData) > 20 {
-				statusData = "In Progress"
-				log.Printf("importGitHubData: Status: %s", statusData)
+			if statusData == "Initializing" && len(allReposData) > 20 {
+				setStatus("Running")
+			}
+
+			// Simple update of the amount of data in memory for the control panel.
+			if statusData == "Running" && len(allReposData) > 30 {
+				setStatus("Running")
 			}
 		}
 
@@ -654,8 +663,6 @@ func importGitHubToMemory(envVars app.EnvVars) {
 		counterMap[k] = *v
 	}
 	counterMap["repos_api_requests"] = counterReposApi
-
-	statusData = "Done"
 
 	helperReportFinish(envVars, report, counterMap)
 }
@@ -697,14 +704,14 @@ func getLatestUpdatesFromData(allRepos []*github.Repository) (map[string]*app.Pu
 func importCSVToMemory(envVars app.EnvVars) error {
 	report := helperReportStart()
 
-	if statusData == "Done" {
-		statusData = "In Progress"
-	}
-
 	allRepos, err := getReposCSV(envVars)
 	if err != nil {
 		log.Printf("importCSVToDB: Repos: Error: %v", err)
 		return err
+	}
+
+	if statusData == "Initializing" {
+		setStatus("Running")
 	}
 
 	report.Timer["allRepos"] = time.Now().UnixMilli()
@@ -731,8 +738,6 @@ func importCSVToMemory(envVars app.EnvVars) error {
 		repoID := repo.GetID()
 		allReposData[repoID] = repo
 	}
-
-	statusData = "Done"
 
 	counter := map[string]int{
 		"pulls": len(allPulls),
@@ -1076,7 +1081,7 @@ func helperReportFinish(envVars app.EnvVars, report app.Report, counter map[stri
 	report.FinishedAtUnix = time.Now().UnixMilli()
 	report.FullTime = time.Now().UnixMilli() - report.StartedAtUnix
 
-	counterPullsJSON, _ := json.Marshal(counter)
+	counterJSON, _ := json.Marshal(counter)
 
 	reportMap := map[string]interface{}{
 		"Type":           report.Type,
@@ -1087,7 +1092,7 @@ func helperReportFinish(envVars app.EnvVars, report app.Report, counter map[stri
 		"FullTimeMilli":  report.FullTime,
 		"Repos":          counter["repos"],
 		"Pulls":          counter["pulls"],
-		"Counter":        string(counterPullsJSON),
+		"Counter":        string(counterJSON),
 	}
 
 	startedAtTime, err := time.Parse("2006-01-02T15:04:05.000", report.StartedAt)
@@ -1131,4 +1136,44 @@ func logMemoryUsage(name string) {
 //   - uint64: The equivalent number of megabytes.
 func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
+}
+
+// handleTerminationSignals handles termination signals and sets the status to "Stopped".
+func handleTerminationSignals() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigs
+		log.Printf("Received signal: %s, setting status to Stopped", sig)
+		setStatus("Stopped")
+		os.Exit(0)
+	}()
+}
+
+// SetStatus sets the global status and saves it in Valkey
+func setStatus(status string) {
+
+	if statusData == "" {
+		statusData = "Started"
+	}
+
+	log.Printf("DatasetLoad: Status: Changed: %s -> %s", statusData, status)
+	statusData = status
+
+	// Calculate the number of repositories and pull requests
+	reposCount := len(allReposData)
+	pullsCount := 0
+	for _, pulls := range allPullsData {
+		pullsCount += len(pulls)
+	}
+
+	// Prepare a map with status and counts
+	data := map[string]interface{}{
+		"status":      status,
+		"type":        app.Config.App.DatasetLoadType,
+		"repos_count": reposCount,
+		"pulls_count": pullsCount,
+	}
+
+	valkey.SaveDatasetLoader(data)
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -9,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	app "github-stat/internal"
 	"github-stat/internal/databases/mongodb"
@@ -17,6 +17,8 @@ import (
 	"github-stat/internal/databases/postgres"
 
 	"github-stat/internal/databases/valkey"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 func main() {
@@ -101,18 +103,20 @@ func manageDataset(w http.ResponseWriter, r *http.Request) {
 }
 
 func prepareIndexData() app.IndexData {
-
+	// Fetch database configurations from Redis
 	databases, err := valkey.GetDatabases()
 	if err != nil {
 		log.Printf("Error: Getting databases: %v", err)
 	}
 
+	// Sort databases by position
 	sort.Slice(databases, func(i, j int) bool {
 		pos1, _ := strconv.Atoi(databases[i]["position"])
 		pos2, _ := strconv.Atoi(databases[j]["position"])
 		return pos1 < pos2
 	})
 
+	// Filter databases with loadSwitch set to true
 	var databasesLoad []map[string]string
 	for _, db := range databases {
 		if db["loadSwitch"] == "true" {
@@ -120,12 +124,252 @@ func prepareIndexData() app.IndexData {
 		}
 	}
 
+	// Initialize IndexData with actual values from Valkey
 	data := app.IndexData{
-		Databases:     databases,
-		DatabasesLoad: databasesLoad,
+		Databases:        databases,
+		DatabasesLoad:    databasesLoad,
+		DatabasesDataset: fetchDatabasesDataset(databases),
+		DatasetState:     fetchDatasetState(),
 	}
 
 	return data
+}
+
+// fetchDatasetState retrieves the dataset state from Valkey and returns it as an app.DatasetState.
+func fetchDatasetState() app.DatasetState {
+	// Get data from Valkey
+	data := valkey.GetDatasetState()
+
+	// If no data is available, set default values
+	if data == nil {
+		return app.DatasetState{
+			Status:     "Not Started",
+			Type:       "",
+			ReposCount: 0,
+			PullsCount: 0,
+		}
+	}
+
+	// Convert data to DatasetState
+	datasetState := app.DatasetState{
+		Status:     data["status"].(string),
+		Type:       data["type"].(string),
+		ReposCount: int(data["repos_count"].(float64)), // assuming the numbers come back as float64
+		PullsCount: int(data["pulls_count"].(float64)), // assuming the numbers come back as float64
+	}
+
+	// Get the latest report from Valkey
+	report, err := valkey.GetLatestDatasetReport()
+	if err != nil {
+		log.Printf("Error getting latest report: %v", err)
+		datasetState.LastUpdate = ""
+	} else {
+		// Extract the last update date
+		if finishedAt, ok := report["FinishedAt"]; ok {
+			datasetState.LastUpdate = finishedAt.(string)
+		} else {
+			datasetState.LastUpdate = ""
+		}
+	}
+
+	return datasetState
+}
+
+func fetchDatabasesDataset(databases []map[string]string) []app.DatabaseInfo {
+	// Channel to collect results from go-routines
+	results := make(chan struct {
+		db  app.DatabaseInfo
+		err error
+	}, len(databases))
+
+	// Fetch dataset information from each database
+	for _, db := range databases {
+		go func(db map[string]string) {
+			dbData, err := getDataFromDatabase(db)
+			results <- struct {
+				db  app.DatabaseInfo
+				err error
+			}{
+				db:  dbData,
+				err: err,
+			}
+		}(db)
+	}
+
+	// Collect results
+	var databasesDataset []app.DatabaseInfo
+	for i := 0; i < len(databases); i++ {
+		result := <-results
+		if result.err == nil {
+			databasesDataset = append(databasesDataset, result.db)
+		}
+	}
+
+	close(results)
+
+	return databasesDataset
+}
+
+// getDataFromDatabase retrieves the dataset information from a database based on its type and connection string.
+func getDataFromDatabase(db map[string]string) (app.DatabaseInfo, error) {
+	id := db["id"]
+	dbType := db["dbType"]
+	connectionString := db["connectionString"]
+	datasetStatus := db["datasetStatus"]
+	var dbData app.DatasetInfo
+	var err error
+
+	switch dbType {
+	case "mysql":
+		dbData, err = getMySQLData(connectionString)
+	case "postgres":
+		dbData, err = getPostgresData(connectionString)
+	case "mongodb":
+		dbData, err = getMongoDBData(db)
+	default:
+		return app.DatabaseInfo{}, fmt.Errorf("unsupported database type: %s", dbType)
+	}
+
+	if err != nil {
+		return app.DatabaseInfo{}, err
+	}
+
+	return app.DatabaseInfo{
+		ID:           id,
+		DBType:       dbType,
+		DBName:       dbData.DBName,
+		Repositories: dbData.Repositories,
+		PullRequests: dbData.PullRequests,
+		LastUpdate:   dbData.LastUpdate,
+		Status:       datasetStatus,
+	}, nil
+}
+
+// getMySQLData retrieves the dataset information from a MySQL database.
+func getMySQLData(connectionString string) (app.DatasetInfo, error) {
+	my, err := mysql.ConnectByString(connectionString)
+	if err != nil {
+		log.Printf("Error: Dataset: MySQL: Connect: %s", err)
+		return app.DatasetInfo{}, err
+	}
+	defer my.Close()
+
+	dbName := ""
+	err = my.QueryRow(`SELECT DATABASE();`).Scan(&dbName)
+	if err != nil {
+		log.Printf("Error: Dataset: MySQL: Getting MySQL DB name: %v", err)
+	}
+
+	mysql_pulls, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
+	if err != nil {
+		log.Printf("Error: Dataset: MySQL: Pulls: %v", err)
+	}
+	mysql_repositories, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
+	if err != nil {
+		log.Printf("Error: Dataset: MySQL: Repos: %v", err)
+	}
+
+	// Get the latest update from the reports_dataset table
+	var lastUpdate string
+	err = my.QueryRow(`
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(data, '$.finished_at'))
+        FROM reports_dataset
+        ORDER BY JSON_UNQUOTE(JSON_EXTRACT(data, '$.finished_at')) DESC
+        LIMIT 1
+    `).Scan(&lastUpdate)
+	if err != nil {
+		log.Printf("Error: Dataset: MySQL: Last update: %v", err)
+	}
+
+	return app.DatasetInfo{
+		DBName:       dbName,
+		Repositories: mysql_repositories,
+		PullRequests: mysql_pulls,
+		LastUpdate:   lastUpdate,
+	}, nil
+}
+
+// getPostgresData retrieves the dataset information from a PostgreSQL database.
+func getPostgresData(connectionString string) (app.DatasetInfo, error) {
+	pg, err := postgres.ConnectByString(connectionString)
+	if err != nil {
+		log.Printf("Error: Dataset: Postgres: Connect: %s", err)
+		return app.DatasetInfo{}, err
+	}
+	defer pg.Close()
+
+	dbName := ""
+	err = pg.QueryRow(`SELECT current_database();`).Scan(&dbName)
+	if err != nil {
+		log.Printf("Error: Dataset: Postgres: Getting PostgreSQL DB name: %v", err)
+	}
+
+	pg_pulls, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
+	if err != nil {
+		log.Printf("Error: Dataset: Postgres: Pulls: %v", err)
+	}
+	pg_repositories, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
+	if err != nil {
+		log.Printf("Error: Dataset: Postgres: Repos: %v", err)
+	}
+
+	// Get the latest update from the reports_dataset table
+	var lastUpdate string
+	err = pg.QueryRow(`
+        SELECT data->>'finished_at'
+        FROM github.reports_dataset
+        ORDER BY data->>'finished_at' DESC
+        LIMIT 1
+    `).Scan(&lastUpdate)
+	if err != nil {
+		log.Printf("Error: Dataset: Postgres: Last update: %v", err)
+	}
+
+	return app.DatasetInfo{
+		DBName:       dbName,
+		Repositories: pg_repositories,
+		PullRequests: pg_pulls,
+		LastUpdate:   lastUpdate,
+	}, nil
+}
+
+// getMongoDBData retrieves the dataset information from a MongoDB database.
+func getMongoDBData(db map[string]string) (app.DatasetInfo, error) {
+	connectionString := db["connectionString"]
+	dbName := db["database"] // Use the database field from db map
+
+	mongo_ctx := context.Background()
+	mongo, err := mongodb.ConnectByString(connectionString, mongo_ctx)
+	if err != nil {
+		log.Printf("Error: Dataset: MongoDB: Connect: %s", err)
+		return app.DatasetInfo{}, err
+	}
+	defer mongo.Disconnect(mongo_ctx)
+
+	mongo_pulls, err := mongodb.CountDocuments(mongo, dbName, "pulls", bson.D{})
+	if err != nil {
+		log.Printf("Error: Dataset: MongoDB: Count Pulls: %s", err)
+		mongo_pulls = 0
+	}
+
+	mongo_repositories, err := mongodb.CountDocuments(mongo, dbName, "repositories", bson.D{})
+	if err != nil {
+		log.Printf("Error: Dataset: MongoDB: Count Repos: %s", err)
+		mongo_repositories = 0
+	}
+
+	// Use the new function to get the latest update from the reports_dataset collection
+	lastUpdate, err := mongodb.GetDatasetLatestUpdates(db)
+	if err != nil {
+		log.Printf("Error: Dataset: MongoDB: Last update: %v", err)
+	}
+
+	return app.DatasetInfo{
+		DBName:       dbName,
+		Repositories: int(mongo_repositories),
+		PullRequests: int(mongo_pulls),
+		LastUpdate:   lastUpdate,
+	}, nil
 }
 
 func createDatabase(w http.ResponseWriter, r *http.Request) {
@@ -526,153 +770,7 @@ func settingsLoad(w http.ResponseWriter, r *http.Request) {
 }
 
 func dataset(w http.ResponseWriter, r *http.Request) {
-	var wg sync.WaitGroup
-	results := make(chan struct {
-		dbType string
-		data   app.Database
-	}, 3)
-	// MySQL
-	// if app.Config.MySQL.ConnectionStatus == "Connected" {
-	// 	wg.Add(1)
-	// 	go func() {
-	// 		defer wg.Done()
-	// 		my, err := mysql.ConnectByString(app.Config.MySQL.ConnectionString)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: MySQL: Connect: %s", err)
-	// 			return
-	// 		}
-	// 		defer my.Close()
-
-	// 		dbName := ""
-	// 		err = my.QueryRow(`SELECT DATABASE();`).Scan(&dbName)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: MySQL: Getting MySQL DB name: %v", err)
-	// 		}
-
-	// 		mysql_pulls, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: MySQL: Pulls: %v", err)
-	// 		}
-	// 		mysql_repositories, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: MySQL: Repos: %v", err)
-	// 		}
-	// 		results <- struct {
-	// 			dbType string
-	// 			data   app.Database
-	// 		}{
-	// 			dbType: "mysql",
-	// 			data: app.Database{
-	// 				DBName:       dbName,
-	// 				Repositories: mysql_repositories,
-	// 				PullRequests: mysql_pulls,
-	// 			},
-	// 		}
-	// 	}()
-	// } else {
-	// 	log.Printf("Error: Dataset: MongoDB: Config: %v", app.Config.MySQL)
-	// }
-
-	// // PostgreSQL
-	// if app.Config.Postgres.ConnectionStatus == "Connected" {
-	// 	wg.Add(1)
-	// 	go func() {
-	// 		defer wg.Done()
-	// 		pg, err := postgres.ConnectByString(app.Config.Postgres.ConnectionString)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: Postgres: Connect: %s", err)
-	// 			return
-	// 		}
-	// 		defer pg.Close()
-
-	// 		dbName := ""
-	// 		err = pg.QueryRow(`SELECT current_database();`).Scan(&dbName)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: Postgres: Getting PostgreSQL DB name: %v", err)
-	// 		}
-
-	// 		pg_pulls, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: Postgres: Pulls: %v", err)
-	// 		}
-	// 		pg_repositories, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: Postgres: Repos: %v", err)
-	// 		}
-	// 		results <- struct {
-	// 			dbType string
-	// 			data   app.Database
-	// 		}{
-	// 			dbType: "postgresql",
-	// 			data: app.Database{
-	// 				DBName:       dbName,
-	// 				Repositories: pg_repositories,
-	// 				PullRequests: pg_pulls,
-	// 			},
-	// 		}
-	// 	}()
-	// } else {
-	// 	log.Printf("Error: Dataset: MongoDB: Config: %v", app.Config.Postgres)
-	// }
-	// // MongoDB
-	// if app.Config.MongoDB.ConnectionStatus == "Connected" {
-	// 	wg.Add(1)
-	// 	go func() {
-	// 		defer wg.Done()
-	// 		mongo_ctx := context.Background()
-	// 		mongo, err := mongodb.ConnectByString(app.Config.MongoDB.ConnectionString, mongo_ctx)
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: MongoDB: Connect: %s", err)
-	// 			return
-	// 		}
-	// 		defer mongo.Disconnect(mongo_ctx)
-
-	// 		dbName := app.Config.MongoDB.DB
-
-	// 		mongo_pulls, err := mongodb.CountDocuments(mongo, dbName, "pulls", bson.D{})
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: MongoDB: Count Pulls: %s", err)
-	// 			mongo_pulls = 0
-	// 		}
-
-	// 		mongo_repositories, err := mongodb.CountDocuments(mongo, dbName, "repositories", bson.D{})
-	// 		if err != nil {
-	// 			log.Printf("Error: Dataset: MongoDB: Count Repos: %s", err)
-	// 			mongo_repositories = 0
-	// 		}
-
-	// 		results <- struct {
-	// 			dbType string
-	// 			data   app.Database
-	// 		}{
-	// 			dbType: "mongodb",
-	// 			data: app.Database{
-	// 				DBName:       dbName,
-	// 				Repositories: int(mongo_repositories),
-	// 				PullRequests: int(mongo_pulls),
-	// 			},
-	// 		}
-	// 	}()
-	// } else {
-	// 	log.Printf("Error: Dataset: MongoDB: Config: %v", app.Config.MongoDB)
-	// }
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	data := app.IndexData{}
-	for result := range results {
-		switch result.dbType {
-		case "mysql":
-			data.Dataset.MySQL = result.data
-		case "postgresql":
-			data.Dataset.PostgreSQL = result.data
-		case "mongodb":
-			data.Dataset.MongoDB = result.data
-		}
-	}
+	data := prepareIndexData()
 
 	tmpl, err := template.ParseFiles("templates/dataset.html")
 	if err != nil {

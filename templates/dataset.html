@@ -3,87 +3,59 @@
     <div id="loading-indicator" style="display: none; text-align: center;">
         <div class="spinner-border" role="status">
             <span class="visually-hidden">Loading...</span>
-          </div>
-          <p>Loading...</p>
+        </div>
+        <p>Loading...</p>
     </div>
     <div id="dataset-content">
-    <div class="row">
-        <div class="col-md-4">
-        <h3>MySQL</h3>
-        <table class="table">
-            <thead>
-            <tr>
-                <th>Data</th>
-                <th>Count</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr>
-                <td>Database</td>
-                <td id="mysql-database">{{ .Dataset.MySQL.DBName }}</td>
-            </tr>
-            <tr>
-                <td>Repositories</td>
-                <td id="mysql-repositories">{{ .Dataset.MySQL.Repositories }}</td>
-            </tr>
-            <tr>
-                <td>Pull Requests</td>
-                <td id="mysql-pull-requests">{{ .Dataset.MySQL.PullRequests }}</td>
-            </tr>
-            </tbody>
-        </table>
+        <!-- First block: Dataset script information -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <h5>Operating Mode</h5>
+                <p>{{ .DatasetState.Type }}</p>
+            </div>
+            <div class="col-md-3">
+                <h5>Script Status</h5>
+                <p>{{ .DatasetState.Status }}</p>
+            </div>
+            <div class="col-md-3">
+                <h5>Data</h5>
+                <p>{{ .DatasetState.ReposCount }} Repositories, {{ .DatasetState.PullsCount }} Pull Requests</p>
+            </div>
+            <div class="col-md-3">
+                <h5>Last Update</h5>
+                <p>{{ .DatasetState.LastUpdate }}</p>
+            </div>
         </div>
-        <div class="col-md-4">
-        <h3>PostgreSQL</h3>
-        <table class="table">
-            <thead>
-            <tr>
-                <th>Data</th>
-                <th>Count</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr>
-                <td>Database</td>
-                <td id="postgresql-database">{{ .Dataset.PostgreSQL.DBName }}</td>
-            </tr>
-            <tr>
-                <td>Repositories</td>
-                <td id="postgresql-repositories">{{ .Dataset.PostgreSQL.Repositories }}</td>
-            </tr>
-            <tr>
-                <td>Pull Requests</td>
-                <td id="postgresql-pull-requests">{{ .Dataset.PostgreSQL.PullRequests }}</td>
-            </tr>
-            </tbody>
-        </table>
+        <!-- Second block: Databases table -->
+        <div class="row">
+            <div class="col-md-12">
+                <h3>Databases</h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>dbType</th>
+                            <th>Database Name</th>
+                            <th>Data</th>
+                            <th>Last Update</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range .DatabasesDataset }}
+                        <tr>
+                            <td>{{ .ID }}</td>
+                            <td>{{ .DBType }}</td>
+                            <td>{{ .DBName }}</td>
+                            <td>{{ .Repositories }} Repositories, {{ .PullRequests }} Pull Requests</td>
+                            <td>{{ .LastUpdate }}</td>
+                            <td>{{ .Status }}</td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <div class="col-md-4">
-        <h3>MongoDB</h3>
-        <table class="table">
-            <thead>
-            <tr>
-                <th>Data</th>
-                <th>Count</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr>
-                <td>Database</td>
-                <td id="mongodb-database">{{ .Dataset.MongoDB.DBName }}</td>
-            </tr>
-            <tr>
-                <td>Repositories</td>
-                <td id="mongodb-repositories">{{ .Dataset.MongoDB.Repositories }}</td>
-            </tr>
-            <tr>
-                <td>Pull Requests</td>
-                <td id="mongodb-pull-requests">{{ .Dataset.MongoDB.PullRequests }}</td>
-            </tr>
-            </tbody>
-        </table>
-        </div>
-    </div>
     </div>
 </div>
 {{ end }}
