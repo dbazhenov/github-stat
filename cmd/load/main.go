@@ -42,19 +42,7 @@ type StopLoadIDs struct {
 	MongoDB  []string
 }
 
-// Mutexes and maps for managing running IDs for different types of databases
-var (
-	runningIDsMutexMySQL sync.Mutex
-	runningIDsMySQL      = make(map[string]context.CancelFunc)
-
-	runningIDsMutexPostgres sync.Mutex
-	runningIDsPostgres      = make(map[string]context.CancelFunc)
-
-	runningIDsMutexMongoDB sync.Mutex
-	runningIDsMongoDB      = make(map[string]context.CancelFunc)
-
-	routinesMutex sync.Mutex
-)
+var databasesLoadMutex sync.Mutex
 
 func main() {
 	// Get the configuration from environment variables or .env file.
@@ -70,20 +58,19 @@ func main() {
 		log.Printf("Error: Getting databases: %v", err)
 	}
 
-	log.Printf("Load MySQL: %v", databasesLoad.MySQL)
-	log.Printf("Load Postgres: %v", databasesLoad.Postgres)
-	log.Printf("Load MongoDB: %v", databasesLoad.MongoDB)
-
 	// Start managing load for each type of database based on configuration
 	if app.Config.LoadGenerator.MySQL {
+		log.Printf("Load MySQL: %v", databasesLoad.MySQL)
 		go manageAllLoad("mysql")
 	}
 
 	if app.Config.LoadGenerator.MongoDB {
+		log.Printf("Load MongoDB: %v", databasesLoad.MongoDB)
 		go manageAllLoad("mongodb")
 	}
 
 	if app.Config.LoadGenerator.Postgres {
+		log.Printf("Load Postgres: %v", databasesLoad.Postgres)
 		go manageAllLoad("postgres")
 	}
 
@@ -96,8 +83,7 @@ func main() {
 			log.Printf("Error: Updating databases: %v", err)
 		}
 
-		log.Printf("Updated Load MySQL: %d, Postgres: %d, MongoDB: %d", len(databasesLoad.MySQL), len(databasesLoad.Postgres), len(databasesLoad.MongoDB))
-		log.Printf("Stop Load: %v", stopLoadIDs)
+		log.Printf("Updated Load MySQL: %d, Postgres: %d, MongoDB: %d ... Stop Load: %v", len(databasesLoad.MySQL), len(databasesLoad.Postgres), len(databasesLoad.MongoDB), stopLoadIDs)
 	}
 }
 
@@ -106,27 +92,17 @@ func manageAllLoad(dbType string) {
 	var wg sync.WaitGroup
 
 	// Variables to hold the appropriate mutex and map for the given database type
-	var runningIDsMutex *sync.Mutex
-	var runningIDs map[string]context.CancelFunc
+	var runningIDsMutex sync.Mutex
 
-	// Retrieve the appropriate mutex and map based on the database type
-	switch dbType {
-	case "mysql":
-		runningIDsMutex = &runningIDsMutexMySQL
-		runningIDs = runningIDsMySQL
-	case "postgres":
-		runningIDsMutex = &runningIDsMutexPostgres
-		runningIDs = runningIDsPostgres
-	case "mongodb":
-		runningIDsMutex = &runningIDsMutexMongoDB
-		runningIDs = runningIDsMongoDB
-	}
+	runningIDs := make(map[string]context.CancelFunc)
 
 	for {
 		var databases []map[string]string
 		var stopIDs []string
 
 		// Retrieve the latest data based on the database type
+
+		databasesLoadMutex.Lock()
 		switch dbType {
 		case "mysql":
 			databases = databasesLoad.MySQL
@@ -138,6 +114,7 @@ func manageAllLoad(dbType string) {
 			databases = databasesLoad.MongoDB
 			stopIDs = stopLoadIDs.MongoDB
 		}
+		databasesLoadMutex.Unlock()
 
 		// Iterate over the databases and manage goroutines
 		for _, db := range databases {
@@ -154,6 +131,7 @@ func manageAllLoad(dbType string) {
 					defer wg.Done()
 					manageLoad(db, ctx)
 				}(db, ctx)
+				time.Sleep(50 * time.Millisecond)
 				log.Printf("Started load for database %s", id)
 			} else {
 				runningIDsMutex.Unlock()
@@ -179,24 +157,13 @@ func manageAllLoad(dbType string) {
 	}
 }
 
-//	func testManageLoad(db map[string]string, ctx context.Context) {
-//		for {
-//			select {
-//			case <-ctx.Done():
-//				log.Printf("Context done for newManageLoad: %v", db["id"])
-//				log.Printf("Stopped newManageLoad for: %v", db["id"])
-//				return
-//			default:
-//				log.Printf("newManageLoad for: %v", db["id"])
-//				time.Sleep(3 * time.Second)
-//			}
-//		}
-//	}
-//
 // manageLoad manages the load for a single database
 func manageLoad(db map[string]string, ctx context.Context) {
 	dbType := db["dbType"]
 	id := db["id"]
+
+	var routinesMutex sync.Mutex
+	routines := make(map[int]context.CancelFunc)
 
 	checkOrWaitDB(id, dbType)
 
@@ -205,11 +172,9 @@ func manageLoad(db map[string]string, ctx context.Context) {
 	var wg sync.WaitGroup
 	currentConnections, err := strconv.Atoi(db["connections"])
 	if err != nil {
-		log.Printf("Start: Error converting connections for database %s: %v", id, err)
+		log.Printf("%s: %s: Start: Error converting connections for database: %v", dbType, id, err)
 		return
 	}
-
-	routines := make(map[int]context.CancelFunc)
 
 	// Initial startup of Go routines
 	for i := 0; i < currentConnections; i++ {
@@ -222,9 +187,10 @@ func manageLoad(db map[string]string, ctx context.Context) {
 			defer wg.Done()
 			runDB(db, rctx, connID)
 		}(i, rctx)
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	log.Printf("Manage Load: Start %s: %d routines in progress for database %s", dbType, len(routines), id)
+	log.Printf("%s: %s: Manage Load: Start: Connections: %d routines started", dbType, id, len(routines))
 
 	for {
 		select {
@@ -232,9 +198,11 @@ func manageLoad(db map[string]string, ctx context.Context) {
 			wg.Wait()
 			return
 		default:
+			// Get updated database configuration
 			db = getDatabaseByID(id, dbType)
+
 			if db == nil {
-				log.Printf("Database %s no longer exists, stopping all routines", id)
+				log.Printf("%s: Database %s no longer exists, stopping all routines", dbType, id)
 				routinesMutex.Lock()
 				for _, cancel := range routines {
 					cancel()
@@ -252,7 +220,7 @@ func manageLoad(db map[string]string, ctx context.Context) {
 
 			// Check DB connection status
 			if !checkConnection(db) {
-				log.Printf("%s: Detected disconnect, restarting routines.", dbType)
+				log.Printf("%s: %s: Detected disconnect, restarting routines.", dbType, id)
 
 				// Cancel all running goroutines
 				routinesMutex.Lock()
@@ -271,9 +239,12 @@ func manageLoad(db map[string]string, ctx context.Context) {
 				checkOrWaitDB(id, dbType)
 
 				db = getDatabaseByID(id, dbType)
+
 				if db == nil {
-					log.Printf("Database %s no longer exists after reconnection, stopping all routines", id)
+					log.Printf("%s: %s: Database no longer exists after reconnection, stopping all routines", dbType, id)
 					return
+				} else {
+					log.Printf("%s: %s: Database connection has been restored. Restarting %s routines. ", dbType, id, db["connections"])
 				}
 
 				newConnections, err = strconv.Atoi(db["connections"])
@@ -292,13 +263,14 @@ func manageLoad(db map[string]string, ctx context.Context) {
 						defer wg.Done()
 						runDB(db, rctx, connID)
 					}(i, rctx)
+					time.Sleep(50 * time.Millisecond)
 				}
-				log.Printf("Manage Load: %s: %d routines in progress for database %s", dbType, len(routines), id)
+				log.Printf("%s: %s: Manage Load: %d routines in progress", dbType, id, len(routines))
 			}
 
 			// Manage changes in number of connections
 			if currentConnections != newConnections {
-				log.Printf("%s: Manage: Change in the number of connections: %d -> %d for database %s", dbType, currentConnections, newConnections, id)
+				log.Printf("%s: %s: Manage Load: Change in the number of connections: %d -> %d ", dbType, id, currentConnections, newConnections)
 
 				// Reduce the number of connections
 				if newConnections < currentConnections {
@@ -307,7 +279,7 @@ func manageLoad(db map[string]string, ctx context.Context) {
 						if rcancel, exists := routines[i]; exists {
 							rcancel()
 							delete(routines, i)
-							log.Printf("Stopped routine %d for database %s", i, db["id"])
+							log.Printf("%s: %s: Stopped routine %d", dbType, db["id"], i)
 						}
 						routinesMutex.Unlock()
 					}
@@ -324,12 +296,13 @@ func manageLoad(db map[string]string, ctx context.Context) {
 						go func(connID int, rctx context.Context) {
 							defer wg.Done()
 							runDB(db, rctx, connID)
-							log.Printf("Started routine %d for database %s", i, db["id"])
 						}(i, rctx)
+						log.Printf("%s: %s: Started routine %d", dbType, db["id"], i)
+						time.Sleep(50 * time.Millisecond)
 					}
 				}
 
-				log.Printf("Manage Load: %s: %d routines in progress for database %s", dbType, len(routines), id)
+				log.Printf("%s: %s: Manage Load: %d routines in progress", dbType, id, len(routines))
 
 				currentConnections = newConnections
 			}
@@ -355,53 +328,70 @@ func runDB(db map[string]string, ctx context.Context, id int) {
 	}
 }
 
+// runMySQL runs the MySQL database operations for a specific connection
 func runMySQL(ctx context.Context, routineId int, dbConfig map[string]string) {
 	connectionString := dbConfig["connectionString"]
 
+	// Connect to the MySQL database
 	db, err := mysql.ConnectByString(connectionString)
 	if err != nil {
-		log.Printf("MySQL: Error: goroutine: %d: %s: message: %s", routineId+1, dbConfig["id"], err)
+		log.Printf("MySQL: %s: Error: goroutine: %d: message: %s", dbConfig["id"], routineId, err)
 		return
 	}
 	defer db.Close()
 
-	log.Printf("MySQL: goroutine %d in progress for %s", routineId+1, dbConfig["id"])
+	log.Printf("MySQL: %s: goroutine %d in progress", dbConfig["id"], routineId)
+
+	// Create an independent copy of dbConfig for use in the loop
+	localDBConfig := make(map[string]string)
+	for k, v := range dbConfig {
+		localDBConfig[k] = v
+	}
+
+	// Variable to store the time of the last configuration update
+	lastUpdate := time.Now()
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("MySQL: goroutine: %d stopped for %s", routineId+1, dbConfig["id"])
+			log.Printf("MySQL: %s goroutine: %d stopped", localDBConfig["id"], routineId)
 			return
 		default:
-
-			updatedDBConfig := getDatabaseByID(dbConfig["id"], "mysql")
-
-			if updatedDBConfig == nil {
-				log.Printf("MySQL: goroutine: %d: database %s has been removed, stopping goroutine", routineId+1, dbConfig["id"])
-				return
+			// Update localDBConfig every 2 seconds
+			if time.Since(lastUpdate) > 2*time.Second {
+				updatedDBConfig := getDatabaseByID(localDBConfig["id"], "mysql")
+				if updatedDBConfig == nil {
+					log.Printf("MySQL: %s: goroutine: %d: database has been removed, stopping goroutine", dbConfig["id"], routineId)
+					return
+				}
+				// Update the local copy of the configuration
+				localDBConfig = updatedDBConfig
+				lastUpdate = time.Now()
 			}
 
-			// log.Printf("MySQL: goroutine: %d: id: %s in progress. Switches: %s, %s, %s, %s, Sleep: %s", routineId+1, dbConfig["id"], updatedDBConfig["switch1"], updatedDBConfig["switch2"], updatedDBConfig["switch3"], updatedDBConfig["switch4"], updatedDBConfig["sleep"])
-
-			if updatedDBConfig["switch1"] == "true" {
-				load.MySQLSwitch1(db, routineId, updatedDBConfig)
+			// Use localDBConfig for other operations
+			if localDBConfig["switch1"] == "true" {
+				load.MySQLSwitch1(db, routineId, localDBConfig)
 			}
 
-			if updatedDBConfig["switch2"] == "true" {
-				load.MySQLSwitch2(db, routineId, updatedDBConfig)
+			if localDBConfig["switch2"] == "true" {
+				load.MySQLSwitch2(db, routineId, localDBConfig)
 			}
 
-			if updatedDBConfig["switch3"] == "true" {
-				load.MySQLSwitch3(db, routineId, updatedDBConfig)
+			if localDBConfig["switch3"] == "true" {
+				load.MySQLSwitch3(db, routineId, localDBConfig)
 			}
 
-			if updatedDBConfig["switch4"] == "true" {
-				load.MySQLSwitch4(db, routineId, updatedDBConfig)
+			if localDBConfig["switch4"] == "true" {
+				load.MySQLSwitch4(db, routineId, localDBConfig)
 			}
 
-			sleepDuration, err := strconv.Atoi(updatedDBConfig["sleep"])
-			if err == nil && sleepDuration > 0 {
-				time.Sleep(time.Duration(sleepDuration) * time.Millisecond)
+			// Check that sleep is not empty before attempting conversion
+			if sleepDurationStr, ok := localDBConfig["sleep"]; ok && sleepDurationStr != "" {
+				sleepDuration, err := strconv.Atoi(sleepDurationStr)
+				if err == nil && sleepDuration > 0 {
+					time.Sleep(time.Duration(sleepDuration) * time.Millisecond)
+				}
 			}
 		}
 	}
@@ -419,17 +409,27 @@ func runPostgreSQL(ctx context.Context, routineId int, dbConfig map[string]strin
 
 	log.Printf("Postgres: goroutine %d in progress for %s", routineId+1, dbConfig["id"])
 
+	// Variable to store the time of the last configuration update
+	lastUpdate := time.Now()
+
+	updatedDBConfig := getDatabaseByID(dbConfig["id"], "postgres")
+
 	for {
 		select {
 		case <-ctx.Done():
 			log.Printf("Postgres: goroutine: %d stopped for %s", routineId+1, dbConfig["id"])
 			return
 		default:
-			updatedDBConfig := getDatabaseByID(dbConfig["id"], "postgres")
 
-			if updatedDBConfig == nil {
-				log.Printf("Postgres: goroutine: %d: database %s has been removed, stopping goroutine", routineId+1, dbConfig["id"])
-				return
+			if time.Since(lastUpdate) > 2*time.Second {
+				updatedDBConfig = getDatabaseByID(dbConfig["id"], "postgres")
+
+				if updatedDBConfig == nil {
+					log.Printf("Postgres: goroutine: %d: database %s has been removed, stopping goroutine", routineId+1, dbConfig["id"])
+					return
+				}
+
+				lastUpdate = time.Now()
 			}
 
 			// log.Printf("Postgres: goroutine: %d: id: %s in progress. Switches: %s, %s, %s, %s, Sleep: %s", routineId+1, dbConfig["id"], updatedDBConfig["switch1"], updatedDBConfig["switch2"], updatedDBConfig["switch3"], updatedDBConfig["switch4"], updatedDBConfig["sleep"])
@@ -474,19 +474,28 @@ func runMongoDB(ctx context.Context, routineId int, dbConfig map[string]string) 
 
 	log.Printf("MongoDB: goroutine %d in progress for %s", routineId+1, dbConfig["id"])
 
+	// Variable to store the time of the last configuration update
+	lastUpdate := time.Now()
+
+	updatedDBConfig := getDatabaseByID(dbConfig["id"], "mongodb")
+
 	for {
 		select {
 		case <-ctx.Done():
 			log.Printf("MongoDB: goroutine: %d stopped for %s", routineId+1, dbConfig["id"])
 			return
 		default:
-			updatedDBConfig := getDatabaseByID(dbConfig["id"], "mongodb")
 
-			if updatedDBConfig == nil {
-				log.Printf("MongoDB: goroutine: %d: database %s has been removed, stopping goroutine", routineId+1, dbConfig["id"])
-				return
+			if time.Since(lastUpdate) > 2*time.Second {
+				updatedDBConfig = getDatabaseByID(dbConfig["id"], "mongodb")
+
+				if updatedDBConfig == nil {
+					log.Printf("MongoDB: goroutine: %d: database %s has been removed, stopping goroutine", routineId+1, dbConfig["id"])
+					return
+				}
+
+				lastUpdate = time.Now()
 			}
-
 			// log.Printf("MongoDB: goroutine: %d: id: %s in progress. Switches: %s, %s, %s, %s, Sleep: %s", routineId+1, dbConfig["id"], updatedDBConfig["switch1"], updatedDBConfig["switch2"], updatedDBConfig["switch3"], updatedDBConfig["switch4"], updatedDBConfig["sleep"])
 
 			if updatedDBConfig["switch1"] == "true" {
@@ -556,9 +565,18 @@ func updateLoadDatabases() error {
 		}
 	}
 
+	// Create local copies for the old databases
+	var oldMySQL, oldPostgres, oldMongoDB []map[string]string
+
+	databasesLoadMutex.Lock()
+	oldMySQL = append([]map[string]string{}, databasesLoad.MySQL...)
+	oldPostgres = append([]map[string]string{}, databasesLoad.Postgres...)
+	oldMongoDB = append([]map[string]string{}, databasesLoad.MongoDB...)
+	databasesLoadMutex.Unlock()
+
 	// Update the stopLoadIDs for databases that are no longer in load
 	stopLoadIDs = StopLoadIDs{}
-	for _, oldDB := range append(databasesLoad.MySQL, append(databasesLoad.Postgres, databasesLoad.MongoDB...)...) {
+	for _, oldDB := range append(oldMySQL, append(oldPostgres, oldMongoDB...)...) {
 		found := false
 		for _, newDB := range append(newDatabasesLoad.MySQL, append(newDatabasesLoad.Postgres, newDatabasesLoad.MongoDB...)...) {
 			if oldDB["id"] == newDB["id"] {
@@ -579,12 +597,13 @@ func updateLoadDatabases() error {
 	}
 
 	// Update the global databasesLoad with the new configuration
+	databasesLoadMutex.Lock()
 	databasesLoad = newDatabasesLoad
+	databasesLoadMutex.Unlock()
 
 	return nil
 }
 
-// removeIDFromList removes a specific ID from a list of strings.
 func removeIDFromList(list []string, id string) []string {
 	newList := []string{}
 	for _, item := range list {
@@ -595,28 +614,22 @@ func removeIDFromList(list []string, id string) []string {
 	return newList
 }
 
-// getLoadDatabases retrieves and sorts the database configurations from Valkey.
 func getLoadDatabases() error {
-	// Retrieve databases configuration from Valkey
 	databases, err := valkey.GetDatabases()
 	if err != nil {
 		return err
 	}
 
-	// Sort databases by their position
 	sort.Slice(databases, func(i, j int) bool {
 		pos1, _ := strconv.Atoi(databases[i]["position"])
 		pos2, _ := strconv.Atoi(databases[j]["position"])
 		return pos1 < pos2
 	})
 
-	// Initialize DatabasesLoad
 	databasesLoad = DatabasesLoad{}
 
-	// Iterate over each database configuration
 	for _, db := range databases {
 		if db["loadSwitch"] == "true" {
-			// Add databases to the respective type in databasesLoad
 			switch db["dbType"] {
 			case "mysql":
 				databasesLoad.MySQL = append(databasesLoad.MySQL, db)
@@ -631,51 +644,46 @@ func getLoadDatabases() error {
 	return nil
 }
 
-// checkOrWaitDB continuously checks the connection status of a database until it is connected.
 func checkOrWaitDB(id string, dbType string) {
 	for {
 		db := getDatabaseByID(id, dbType)
 
-		log.Printf("checkOrWaitDB: %s: %s: %s, %s", dbType, id, db["connectionStatus"], db["connectionString"])
-
-		connectionStatus := db["connectionStatus"]
-
 		if checkConnection(db) {
-			log.Printf("Check Or Wait DB: %s: Connected", dbType)
+			log.Printf("checkOrWaitDB: %s: %s: %s", dbType, id, db["connectionStatus"])
 			break
 		}
 
-		log.Printf("Wait DB Connect: %s: Connection failed: %s", dbType, connectionStatus)
+		log.Printf("Wait DB Connect: %s: Connection failed: %s", dbType, db["connectionStatus"])
 		time.Sleep(5 * time.Second)
 	}
 }
 
 // getDatabaseByID retrieves the database configuration by its ID.
 func getDatabaseByID(id string, dbType string) map[string]string {
+	var databasesForProcess []map[string]string
+
+	// Lock the mutex only for the time needed to copy the reference to the data
+	databasesLoadMutex.Lock()
 	switch dbType {
 	case "mysql":
-		for _, db := range databasesLoad.MySQL {
-			if db["id"] == id {
-				return db
-			}
-		}
+		databasesForProcess = databasesLoad.MySQL
 	case "postgres":
-		for _, db := range databasesLoad.Postgres {
-			if db["id"] == id {
-				return db
-			}
-		}
+		databasesForProcess = databasesLoad.Postgres
 	case "mongodb":
-		for _, db := range databasesLoad.MongoDB {
-			if db["id"] == id {
-				return db
-			}
+		databasesForProcess = databasesLoad.MongoDB
+	}
+	databasesLoadMutex.Unlock()
+
+	// Search for the database ID outside of the mutex lock
+	for _, db := range databasesForProcess {
+		if db["id"] == id {
+			return db
 		}
 	}
+
 	return nil
 }
 
-// checkConnection checks the connection status of a database.
 func checkConnection(db map[string]string) bool {
 	connectionString := db["connectionString"]
 	dbType := db["dbType"]
@@ -690,34 +698,41 @@ func checkConnection(db map[string]string) bool {
 		result = mongodb.CheckMongoDB(connectionString)
 	}
 
-	updateConnectionStatus(dbType, db["id"], result)
+	// updateConnectionStatus(dbType, db["id"], result)
 
 	return result == "Connected"
 }
 
-// updateConnectionStatus updates the connection status of a specific database.
-func updateConnectionStatus(dbType, id, status string) {
-	switch dbType {
-	case "mysql":
-		for i, db := range databasesLoad.MySQL {
-			if db["id"] == id {
-				databasesLoad.MySQL[i]["connectionStatus"] = status
-				break
-			}
-		}
-	case "postgres":
-		for i, db := range databasesLoad.Postgres {
-			if db["id"] == id {
-				databasesLoad.Postgres[i]["connectionStatus"] = status
-				break
-			}
-		}
-	case "mongodb":
-		for i, db := range databasesLoad.MongoDB {
-			if db["id"] == id {
-				databasesLoad.MongoDB[i]["connectionStatus"] = status
-				break
-			}
-		}
-	}
-}
+// // updateConnectionStatus updates the connection status of a specific database.
+// func updateConnectionStatus(dbType, id, status string) {
+// 	var databasesForProcess []map[string]string
+
+// 	// Lock the mutex only for the time needed to copy the reference to the data
+// 	databasesLoadMutex.Lock()
+// 	switch dbType {
+// 	case "mysql":
+// 		databasesForProcess = databasesLoad.MySQL
+// 	case "postgres":
+// 		databasesForProcess = databasesLoad.Postgres
+// 	case "mongodb":
+// 		databasesForProcess = databasesLoad.MongoDB
+// 	}
+// 	databasesLoadMutex.Unlock()
+
+// 	// Update the connection status outside of the mutex lock
+// 	for i, db := range databasesForProcess {
+// 		if db["id"] == id {
+// 			databasesLoadMutex.Lock()
+// 			switch dbType {
+// 			case "mysql":
+// 				databasesLoad.MySQL[i]["connectionStatus"] = status
+// 			case "postgres":
+// 				databasesLoad.Postgres[i]["connectionStatus"] = status
+// 			case "mongodb":
+// 				databasesLoad.MongoDB[i]["connectionStatus"] = status
+// 			}
+// 			databasesLoadMutex.Unlock()
+// 			break
+// 		}
+// 	}
+// }
