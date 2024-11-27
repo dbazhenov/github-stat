@@ -1,1 +1,1 @@
-db.setProfilingLevel(2, {slowms: 0})
+db.runCommand({ profile: 2, slowms: 200, ratelimit: 100 });
