@@ -39,6 +39,30 @@
         }
     });
 </script>
+<!-- <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var controlPanelTab = document.getElementById('control-panel-tab');
+        if (controlPanelTab) {
+            controlPanelTab.addEventListener('shown.bs.tab', function(event) {
+                var controlPanelContent = document.getElementById('controlPanelContainer');
+    
+                fetch('/index')
+                    .then(response => response.text())
+                    .then(html => {
+                        var tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = html;
+                        var newContent = tempDiv.querySelector('#controlPanelContainer').innerHTML;
+                        controlPanelContent.innerHTML = newContent;
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        controlPanelContent.innerHTML = '<p>Data loading error.</p>';
+                    });
+            });
+        }
+    });
+</script> -->
+
 </body>
 </html>
 {{ end }}

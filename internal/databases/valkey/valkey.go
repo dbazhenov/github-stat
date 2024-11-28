@@ -147,8 +147,11 @@ func DeleteDatabase(id string) error {
 	key := fmt.Sprintf("databases:%s", id)
 
 	res, err := Valkey.Del(key).Result()
-	log.Printf("Delete db: %s, %v, %v", id, res, err)
+
+	log.Printf("Valkey: Delete DB: %s: Result: %v", id, res)
+
 	if err != nil {
+		log.Printf("Valkey: Delete DB: %s: Error: %v", id, err)
 		return err
 	}
 

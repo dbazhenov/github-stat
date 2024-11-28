@@ -463,6 +463,18 @@ func writeDataFromMemoryToMongoDB(dbConfig map[string]string) error {
 	dbCollectionRepos := db.Collection("repositories")
 	dbCollectionPulls := db.Collection("pulls")
 
+	profileCmd := bson.D{
+		{Key: "profile", Value: 2},
+		{Key: "slowms", Value: 200},
+		{Key: "ratelimit", Value: 100},
+	}
+	var result bson.M
+	if err := db.RunCommand(ctx, profileCmd).Decode(&result); err != nil {
+		log.Printf("Error setting profiling: %v", err)
+	} else {
+		log.Printf("Profiling command result: %v", result)
+	}
+
 	// Create an index by id and repo fields
 	indexKeys := bson.D{
 		{Key: "id", Value: 1},

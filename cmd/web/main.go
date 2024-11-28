@@ -51,7 +51,6 @@ func handleRequest() {
 	http.HandleFunc("/create_db", createDatabase)
 	http.HandleFunc("/database_list", databaseList)
 	http.HandleFunc("/update_db/", updateDatabase)
-	http.HandleFunc("/settings_load", settingsLoad)
 	http.HandleFunc("/delete_db", deleteDatabase)
 	http.HandleFunc("/load_db", loadDatabase)
 	http.HandleFunc("/manage-dataset/", manageDataset)
@@ -394,6 +393,7 @@ func createDatabase(w http.ResponseWriter, r *http.Request) {
 			"connectionString": connectionString,
 			"loadSwitch":       "false",
 			"position":         "0",
+			"sleep":            "0",
 			"connections":      "0",
 			"switch1":          "false",
 			"switch2":          "false",
@@ -473,30 +473,18 @@ func loadDatabase(w http.ResponseWriter, r *http.Request) {
 		"switch4":     switch4,
 	}
 
-	currentDB, err := valkey.GetDatabase(id)
-	if err != nil {
-		log.Printf("Error: Getting database: %v", err)
-		http.Error(w, "Error getting database", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("Load settings update: ID: %s, currentDB: %v", id, currentDB)
-
-	for key, value := range fieldsToUpdate {
-		currentDB[key] = value
-	}
-
-	log.Printf("Load settings update: ID: %s, new fields: %v", id, currentDB)
-
-	err = valkey.AddDatabase(id, currentDB)
+	err := valkey.AddDatabase(id, fieldsToUpdate)
 	if err != nil {
 		log.Printf("Error: Updating database load settings: %v", err)
 		http.Error(w, "Error updating database load settings", http.StatusInternalServerError)
 		return
 	}
 
+	response := fieldsToUpdate
+	response["id"] = id
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(currentDB)
+	json.NewEncoder(w).Encode(response)
 }
 
 func convertSwitch(value string) string {
@@ -513,6 +501,7 @@ func updateDatabase(w http.ResponseWriter, r *http.Request) {
 	dbType := r.FormValue("dbType")
 	loadSwitch := convertSwitch(r.FormValue("loadSwitch"))
 	position := r.FormValue("position")
+	sleep := r.FormValue("sleep")
 
 	init_schema := r.FormValue("init_schema")
 	delete_schema := r.FormValue("delete_schema")
@@ -521,12 +510,16 @@ func updateDatabase(w http.ResponseWriter, r *http.Request) {
 	if position == "" {
 		position = "0"
 	}
+	if sleep == "" {
+		sleep = "0"
+	}
 
 	fieldsToUpdate := map[string]string{
 		"connectionString": connectionString,
 		"database":         database,
 		"loadSwitch":       loadSwitch,
 		"position":         position,
+		"sleep":            sleep,
 	}
 
 	currentDB, err := valkey.GetDatabase(id)
@@ -659,8 +652,6 @@ func deleteDatabase(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("Delete db: %s", id)
-
 		err := valkey.DeleteDatabase(id)
 		if err != nil {
 			log.Printf("Error: Deleting database: %v", err)
@@ -714,7 +705,6 @@ func index(w http.ResponseWriter, r *http.Request) {
 		"templates/footer.html",
 		"templates/settings.html",
 		"templates/settings_databases.html",
-		"templates/settings_load.html",
 		"templates/dataset.html",
 		"templates/control.html")
 	if err != nil {
@@ -724,49 +714,6 @@ func index(w http.ResponseWriter, r *http.Request) {
 	data := prepareIndexData()
 
 	t.ExecuteTemplate(w, "index", data)
-}
-
-func settingsLoad(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost {
-		err := r.ParseForm()
-		if err != nil {
-			http.Error(w, "Error parsing form", http.StatusBadRequest)
-			return
-		}
-
-		for id, sleepStr := range r.Form {
-			if sleepStr[0] == "" {
-				sleepStr[0] = "0"
-			}
-
-			sleep, err := strconv.Atoi(sleepStr[0])
-			if err != nil {
-				http.Error(w, "Invalid value for sleep for id: "+id, http.StatusBadRequest)
-				return
-			}
-
-			currentDB, err := valkey.GetDatabase(id)
-			if err != nil {
-				log.Printf("Error: Getting database: %v", err)
-				http.Error(w, "Error getting database for id: "+id, http.StatusInternalServerError)
-				return
-			}
-
-			currentDB["sleep"] = strconv.Itoa(sleep)
-
-			err = valkey.AddDatabase(id, currentDB)
-			if err != nil {
-				log.Printf("Error: Updating database: %v", err)
-				http.Error(w, "Error updating database for id: "+id, http.StatusInternalServerError)
-				return
-			}
-		}
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-	} else {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-	}
 }
 
 func dataset(w http.ResponseWriter, r *http.Request) {

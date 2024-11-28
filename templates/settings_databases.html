@@ -11,19 +11,29 @@
         <span class="text-muted">/ id: {{ .id }}</span>
       </h4>
       <input type="hidden" id="type-{{ .id }}" name="dbType" value="{{ .dbType }}">
-      <div class="mb-1">
-        <label for="connectionString-{{ .id }}" class="form-label">Connection String</label>
-        <input type="text" class="form-control" id="connectionString-{{ .id }}" name="connectionString" value="{{ .connectionString }}">
+      <div class="row mb-1">
+        <div class="col">
+          <label for="connectionString-{{ .id }}" class="form-label">Connection String</label>
+          <input type="text" class="form-control" id="connectionString-{{ .id }}" name="connectionString" value="{{ .connectionString }}">
+        </div>
       </div>
       {{ if eq .dbType "mongodb" }}
-      <div class="mb-1">
-        <label for="database-{{ .id }}" class="form-label">Database</label>
-        <input type="text" class="form-control" id="database-{{ .id }}" name="database" value="{{ .database }}">
+      <div class="row mb-1">
+        <div class="col">
+          <label for="database-{{ .id }}" class="form-label">Database</label>
+          <input type="text" class="form-control" id="database-{{ .id }}" name="database" value="{{ .database }}">
+        </div>
       </div>
       {{ end }}
-      <div class="mb-1"> 
-        <label for="position-{{ .id }}" class="form-label">Position</label> 
-        <input type="number" class="form-control" id="position-{{ .id }}" name="position" value="{{ .position }}">
+      <div class="row mb-1">
+        <div class="col">
+          <label for="position-{{ .id }}" class="form-label">Position</label> 
+          <input type="number" class="form-control" id="position-{{ .id }}" name="position" value="{{ .position }}">
+        </div>
+        <div class="col">
+          <label for="sleep-{{ .id }}" class="form-label">Sleep (ms)</label>
+          <input type="number" class="form-control" id="sleep-{{ .id }}" name="sleep" value="{{ or .sleep 0 }}">
+        </div>
       </div>
       <div class="form-check form-switch my-4">
         <input class="form-check-input" type="checkbox" id="loadSwitch-{{ .id }}" name="loadSwitch" {{ if eq .loadSwitch "true" }}checked{{ end }}>

@@ -18,21 +18,21 @@
           <div class="col-md-6">
             <div class="form-check form-switch my-4">
               <input class="form-check-input" type="checkbox" id="switch1-{{ .id }}" name="switch1" role="switch" {{ if eq .switch1 "true" }}checked{{ end }} onchange="updateDatabaseLoad('{{ .id }}')">
-              <label class="form-check-label" for="switch1-{{ .id }}">Repositories (Create, Read, Update, Delete)</label>
+              <label class="form-check-label" for="switch1-{{ .id }}">Simple Query (Low Complexity)</label>
             </div>
             <div class="form-check form-switch my-4">
               <input class="form-check-input" type="checkbox" id="switch2-{{ .id }}" name="switch2" role="switch" {{ if eq .switch2 "true" }}checked{{ end }} onchange="updateDatabaseLoad('{{ .id }}')">
-              <label class="form-check-label" for="switch2-{{ .id }}">Pull Requests (Create, Read, Update, Delete)</label>
+              <label class="form-check-label" for="switch2-{{ .id }}">Standard Query (Moderate Complexity)</label>
             </div>
           </div>
           <div class="col-md-6">
             <div class="form-check form-switch my-4">
               <input class="form-check-input" type="checkbox" id="switch3-{{ .id }}" name="switch3" role="switch" {{ if eq .switch3 "true" }}checked{{ end }} style="color: red;" onchange="updateDatabaseLoad('{{ .id }}')">
-              <label class="form-check-label" for="switch3-{{ .id }}">Bad Switch (SELECT by field with no index), odd connections only</label>
+              <label class="form-check-label" for="switch3-{{ .id }}">Advanced Query (High Complexity)</label>
             </div>
             <div class="form-check form-switch my-4">
               <input class="form-check-input" type="checkbox" id="switch4-{{ .id }}" name="switch4" role="switch" {{ if eq .switch4 "true" }}checked{{ end }} style="color: red;" onchange="updateDatabaseLoad('{{ .id }}')">
-              <label class="form-check-label" for="switch4-{{ .id }}">Bad Switch (SELECT by date field in JSON), odd connections only</label>
+              <label class="form-check-label" for="switch4-{{ .id }}">Extreme Query (Very High Complexity)</label>
             </div>
           </div>
         </div>
@@ -65,7 +65,7 @@ function updateDatabaseLoad(id) {
             console.log(response);
         },
         error: function(xhr, status, error) {
-            console.log('Error: ' + error);
+            console.log('updateDatabaseLoad Error: ' + error);
         }
     });
 }
