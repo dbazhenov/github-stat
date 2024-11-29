@@ -233,6 +233,7 @@ func PostgresSwitch3(db *sql.DB, id int, dbConfig map[string]string) {
 
 func PostgresSwitch4(db *sql.DB, id int, dbConfig map[string]string) {
 	if id%2 != 0 {
+
 		query := `
             SELECT data 
             FROM github.pulls 
@@ -243,6 +244,7 @@ func PostgresSwitch4(db *sql.DB, id int, dbConfig map[string]string) {
 		if err != nil {
 			log.Printf("Postgres: Error: goroutine: %d: database: %s: message: %s", id, dbConfig["id"], err)
 		}
+
 	}
 }
 

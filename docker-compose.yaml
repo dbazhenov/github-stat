@@ -10,7 +10,6 @@ services:
     volumes:
       - valkey_data:/data
 
-
   postgres:
     image: "percona/percona-distribution-postgresql:16.2-multi"
     environment:
