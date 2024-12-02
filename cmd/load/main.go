@@ -47,7 +47,7 @@ var stopLoadIDsMutex sync.Mutex
 
 func main() {
 	// Get the configuration from environment variables or .env file.
-	app.InitConfig()
+	app.InitConfig("load")
 
 	// Valkey client initialization
 	valkey.InitValkey(app.Config)
@@ -418,10 +418,11 @@ func runPostgreSQL(ctx context.Context, routineId int, dbConfig map[string]strin
 				lastUpdate = time.Now()
 			}
 
-			newConnections, _ := strconv.Atoi(localDBConfig["connections"])
-			if newConnections > 0 {
-				log.Printf("Postgres: goroutine: %d: id: %s in progress. Switches: %s, %s, %s, %s, Sleep: %s", routineId+1, dbConfig["id"], localDBConfig["switch1"], localDBConfig["switch2"], localDBConfig["switch3"], localDBConfig["switch4"], localDBConfig["sleep"])
-			}
+			// Debug
+			// newConnections, _ := strconv.Atoi(localDBConfig["connections"])
+			// if newConnections > 0 {
+			// 	log.Printf("Postgres: goroutine: %d: id: %s in progress. Switches: %s, %s, %s, %s, Sleep: %s", routineId+1, dbConfig["id"], localDBConfig["switch1"], localDBConfig["switch2"], localDBConfig["switch3"], localDBConfig["switch4"], localDBConfig["sleep"])
+			// }
 
 			if localDBConfig["switch1"] == "true" {
 				load.PostgresSwitch1(db, routineId, localDBConfig)

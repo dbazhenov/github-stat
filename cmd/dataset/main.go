@@ -50,7 +50,7 @@ var maxHeapAlloc uint64
 // starts the process to update databases, and keeps the main function running indefinitely.
 func main() {
 	// Get the configuration from environment variables or .env file.
-	app.InitConfig()
+	app.InitConfig("dataset")
 
 	// Initialize the Valkey client (valkey.Valkey)
 	valkey.InitValkey(app.Config)
@@ -592,7 +592,7 @@ func updateDatasetData() {
 		setStatus("Waiting")
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
 		helperSleep(app.Config)
-		app.InitConfig()
+		app.InitConfig("dataset")
 	}
 }
 

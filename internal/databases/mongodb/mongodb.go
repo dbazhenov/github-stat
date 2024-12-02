@@ -35,7 +35,7 @@ func ConnectByString(connection_string string, ctx context.Context) (*mongo.Clie
 //   - string: "Connected" if successful, otherwise the error message.
 func CheckMongoDB(connectionString string) string {
 	// Set a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	// Use the ConnectByString function to connect to MongoDB

@@ -1,5 +1,4 @@
 {{ define "control" }}
-
 <div class="container" id="controlPanelContainer">
   {{ range .DatabasesLoad }}
   <div class="row mt-3">
@@ -50,79 +49,4 @@
   </div>
   {{ end }}
 </div>
-
-<script>
-function updateDatabaseLoad(id) {
-    const form = $(`#formLoad-${id}`);
-    const data = form.serialize();
-
-    $.ajax({
-        type: 'POST',
-        url: `/load_db`,
-        data: data,
-        success: function(response) {
-            console.log('Database load settings updated successfully');
-            console.log(response);
-        },
-        error: function(xhr, status, error) {
-            console.log('updateDatabaseLoad Error: ' + error);
-        }
-    });
-}
-
-function updateValuePosition(val, rangeId, valueId) {
-    const valueSpan = document.getElementById(valueId);
-    const rangeInput = document.getElementById(rangeId);
-    const percentage = (rangeInput.value - rangeInput.min) / (rangeInput.max - rangeInput.min) * 100;
-    valueSpan.textContent = val;
-    requestAnimationFrame(() => {
-        valueSpan.style.left = `calc(${percentage}% - ${percentage / 100 * 16}px)`;
-    });
-}
-
-function loadControlPanel() {
-    $.ajax({
-        type: 'GET',
-        url: '/',
-        success: function(response) {
-            const container = $(response).find('#controlPanelContainer').html();
-            $('#controlPanelContainer').html(container);
-            console.log('Control Panel loaded successfully');
-            initializeRangeValues(); 
-        },
-        error: function(xhr, status, error) {
-            console.log('Error loading Control Panel: ' + error);
-        }
-    });
-}
-
-function initializeRangeValues() {
-    // Initialize range values
-    document.querySelectorAll('.database-form').forEach(form => {
-        const rangeInput = form.querySelector('input[type="range"]');
-        const valueSpan = form.querySelector('.range-value');
-        if (rangeInput && valueSpan) {
-            updateValuePosition(rangeInput.value, rangeInput.id, valueSpan.id);
-        }
-    });
-}
-
-function openSettingsTab() {
-    const settingsTab = document.querySelector('#settings-tab');
-    if (settingsTab) {
-        settingsTab.click();
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    initializeRangeValues();
-
-    // Refresh database list when Control Panel tab is clicked
-    const controlTab = document.querySelector('#control-panel-tab');
-    if (controlTab) {
-        controlTab.addEventListener('click', loadControlPanel);
-    }
-});
-</script>
-
 {{ end }}

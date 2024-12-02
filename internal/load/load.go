@@ -52,6 +52,7 @@ func MySQLSwitch1(db *sql.DB, id int, dbConfig map[string]string) {
 		}
 	}
 }
+
 func MySQLSwitch2(db *sql.DB, id int, dbConfig map[string]string) {
 	uniq_pulls_ids, err := mysql.SelectListOfInt(db, "SELECT DISTINCT id FROM pulls;")
 
@@ -127,6 +128,7 @@ func MySQLSwitch4(db *sql.DB, id int, dbConfig map[string]string) {
 		}
 	}
 }
+
 func PostgresSwitch1(db *sql.DB, id int, dbConfig map[string]string) {
 	repos_with_pulls, err := postgres.SelectListOfInt(db, "SELECT DISTINCT id FROM github.repositories;")
 
@@ -167,6 +169,7 @@ func PostgresSwitch1(db *sql.DB, id int, dbConfig map[string]string) {
 		}
 	}
 }
+
 func PostgresSwitch2(db *sql.DB, id int, dbConfig map[string]string) {
 	uniq_pulls_ids, err := postgres.SelectListOfInt(db, "SELECT DISTINCT id FROM github.pulls;")
 

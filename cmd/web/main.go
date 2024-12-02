@@ -37,7 +37,7 @@ func main() {
 func initConfig() {
 
 	// Initializing app.Config with environment variables
-	app.InitConfig()
+	app.InitConfig("web")
 
 	// Valkey client (valkey.Valkey) initialization
 	valkey.InitValkey(app.Config)
@@ -421,17 +421,30 @@ func createDatabase(w http.ResponseWriter, r *http.Request) {
 			fields["database"] = mongodbDatabase
 		}
 
+		textMessage := ""
 		if dbType == "mysql" {
 			fields["connectionStatus"] = mysql.CheckMySQL(connectionString)
 
 			if fields["connectionStatus"] == "Connected" {
 				fields["schemaStatus"] = "true"
 
+				textMessage = fmt.Sprintf(
+					`Database connection (ID: <a href="#formDatabases-%s">%s</a>) has been successfully created. To add to the Load Generator Control Panel enable <a href="#formDatabases-%s">the Enable Load</a> switch.`,
+					id, id, id,
+				)
 			} else if strings.Contains(fields["connectionStatus"], "Unknown database") {
 
-				fields["updateStatus"] = fmt.Sprintf("Database connection (ID: %s) has been successfully created, but the database schema is missing. To create it, click the 'Create Schema' button below.", id)
+				fields["updateStatus"] = fmt.Sprintf("Database connection (id: %s) has been successfully created, but the database schema is missing. To create it, click the Create Schema button below.", id)
 				fields["schemaStatus"] = "false"
-
+				textMessage = fmt.Sprintf(
+					`Database connection (ID: <a href="#formDatabases-%s">%s</a>) has been successfully created, but the database schema is missing. To create it, click the <a href="#formDatabases-%s">Create Schema</a> button below.`,
+					id, id, id,
+				)
+			} else {
+				textMessage = fmt.Sprintf(
+					`Connection (ID: <a href="#formDatabases-%s">%s</a>) to the database was created, but an error occurred while trying to connect. Please check the connection string in the list below. Error: %s`,
+					id, id, fields["connectionStatus"],
+				)
 			}
 
 		} else if dbType == "postgres" {
@@ -440,17 +453,41 @@ func createDatabase(w http.ResponseWriter, r *http.Request) {
 			if fields["connectionStatus"] == "Connected" {
 				fields["schemaStatus"] = "true"
 
+				textMessage = fmt.Sprintf(
+					`Database connection (ID: <a href="#formDatabases-%s">%s</a>) has been successfully created. To add to the Load Generator Control Panel enable <a href="#formDatabases-%s">the Enable Load</a> switch.`,
+					id, id, id,
+				)
+
 			} else if strings.Contains(fields["connectionStatus"], "does not exist") || strings.Contains(fields["connectionStatus"], "server login has been failing") {
 
-				fields["updateStatus"] = fmt.Sprintf("Database connection (ID: %s) has been successfully created, but the database schema is missing. To create it, click the 'Create Schema' button below.", id)
+				fields["updateStatus"] = fmt.Sprintf("Database connection (id: %s) has been successfully created, but the database schema is missing. To create it, click the Create Schema button below.", id)
 				fields["schemaStatus"] = "false"
+				textMessage = fmt.Sprintf(
+					`Database connection (ID: <a href="#formDatabases-%s">%s</a>) has been successfully created, but the database schema is missing. To create it, click the <a href="#formDatabases-%s">Create Schema</a> button below.`,
+					id, id, id,
+				)
 
+			} else {
+				textMessage = fmt.Sprintf(
+					`Connection (ID: <a href="#formDatabases-%s">%s</a>) to the database was created, but an error occurred while trying to connect. Please check the connection string in the list below. Error: %s`,
+					id, id, fields["connectionStatus"],
+				)
 			}
 
 		} else if dbType == "mongodb" {
 
 			fields["connectionStatus"] = mongodb.CheckMongoDB(connectionString)
-
+			if fields["connectionStatus"] == "Connected" {
+				textMessage = fmt.Sprintf(
+					`Database connection (ID: <a href="#formDatabases-%s">%s</a>) has been successfully created. To add to the Load Generator Control Panel enable <a href="#formDatabases-%s">the Enable Load</a> switch.`,
+					id, id, id,
+				)
+			} else {
+				textMessage = fmt.Sprintf(
+					`Connection (ID: <a href="#formDatabases-%s">%s</a>) to the database was created, but an error occurred while trying to connect. Please check the connection string in the list below. Error: %s`,
+					id, id, fields["connectionStatus"],
+				)
+			}
 		}
 
 		err = valkey.AddDatabase(id, fields)
@@ -464,6 +501,7 @@ func createDatabase(w http.ResponseWriter, r *http.Request) {
 			"status":       "success",
 			"id":           id,
 			"updateStatus": fields["updateStatus"],
+			"textMessage":  textMessage,
 		}
 
 		w.WriteHeader(http.StatusOK)

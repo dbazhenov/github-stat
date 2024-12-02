@@ -19,9 +19,9 @@ type EnvVars struct {
 type ConfigApp struct {
 	DelayMinutes     int
 	DatasetLoadType  string
-	Debug            bool
 	DatasetDemoRepos string
 	DatasetDemoPulls string
+	Debug            bool
 }
 
 type ConfigLoad struct {
@@ -49,7 +49,7 @@ type ConfigValkey struct {
 
 var Config EnvVars
 
-func GetEnvVars() (EnvVars, error) {
+func GetEnvVars(appType string) (EnvVars, error) {
 
 	var envVars EnvVars
 
@@ -58,49 +58,52 @@ func GetEnvVars() (EnvVars, error) {
 		log.Println("Warning: Error loading .env file, continuing with existing environment variables")
 	}
 
-	envVars.GitHub.Organisation = os.Getenv("GITHUB_ORG")
-	envVars.GitHub.Token = os.Getenv("GITHUB_TOKEN")
-	if envVars.GitHub.Token == "" {
-		log.Println("Configuration: GitHub Token is not set. The script will run in limited mode, only repositories will be fetched. Add Github Token to receive Pull Requests data.")
-	}
-
 	envVars.Valkey.Addr = os.Getenv("VALKEY_ADDR")
 	envVars.Valkey.Port = os.Getenv("VALKEY_PORT")
 	envVars.Valkey.Password = os.Getenv("VALKEY_PASSWORD")
-
 	envVars.Valkey.DB, _ = parseInt("VALKEY_DB")
 
-	envVars.App.Debug, _ = parseBool("DEBUG")
+	if appType == "dataset" {
+		envVars.GitHub.Organisation = os.Getenv("GITHUB_ORG")
+		envVars.GitHub.Token = os.Getenv("GITHUB_TOKEN")
+		if envVars.GitHub.Token == "" {
+			log.Println("Configuration: GitHub Token is not set. The script will run in limited mode, only repositories will be fetched. Add Github Token to receive Pull Requests data.")
+		}
+		envVars.App.DatasetLoadType = os.Getenv("DATASET_LOAD_TYPE")
+		envVars.App.DatasetDemoRepos = os.Getenv("DATASET_DEMO_CSV_REPOS")
+		envVars.App.DatasetDemoPulls = os.Getenv("DATASET_DEMO_CSV_PULLS")
+		envVars.App.DelayMinutes, _ = parseInt("DELAY_MINUTES")
+		envVars.App.Debug, _ = parseBool("DEBUG")
+	}
 
-	envVars.LoadGenerator.MySQL, _ = parseBool("LOAD_MYSQL")
-	envVars.LoadGenerator.Postgres, _ = parseBool("LOAD_POSTGRES")
-	envVars.LoadGenerator.MongoDB, _ = parseBool("LOAD_MONGODB")
+	if appType == "load" {
+		envVars.LoadGenerator.MySQL, _ = parseBool("LOAD_MYSQL")
+		envVars.LoadGenerator.Postgres, _ = parseBool("LOAD_POSTGRES")
+		envVars.LoadGenerator.MongoDB, _ = parseBool("LOAD_MONGODB")
+	}
 
-	envVars.ControlPanel.Port = os.Getenv("CONTROL_PANEL_PORT")
-
-	envVars.App.DatasetLoadType = os.Getenv("DATASET_LOAD_TYPE")
-	envVars.App.DatasetDemoRepos = os.Getenv("DATASET_DEMO_CSV_REPOS")
-	envVars.App.DatasetDemoPulls = os.Getenv("DATASET_DEMO_CSV_PULLS")
-	envVars.App.DelayMinutes, _ = parseInt("DELAY_MINUTES")
+	if appType == "web" {
+		envVars.ControlPanel.Port = os.Getenv("CONTROL_PANEL_PORT")
+	}
 
 	return envVars, nil
 }
 
-func InitConfig() {
-	log.Print("App: Read config")
+func InitConfig(appType string) {
+	log.Printf("App: %s: Read config", appType)
 
-	envVars, err := GetEnvVars()
+	envVars, err := GetEnvVars(appType)
 	if err != nil {
-		log.Printf("Error loading .env file")
+		log.Printf("App: %s: Error GetEnvVars: %v", appType, err)
 	}
 
 	Config = envVars
 }
 
-func GetConfig() EnvVars {
+func GetConfig(appType string) EnvVars {
 	log.Print("App: Read config")
 
-	envVars, err := GetEnvVars()
+	envVars, err := GetEnvVars(appType)
 	if err != nil {
 		log.Printf("Error loading .env file")
 	}

@@ -10,6 +10,285 @@
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.2/dist/umd/popper.min.js" integrity="sha384-7+zCNj/IqJ95wo16oMtfsKbZ9ccEh31eOz1HGyDuCQ6wgnyJNSYdrPa03rtR1zdB" crossorigin="anonymous"></script>
 
 <script>
+    function deleteSchema(id) {
+        if (confirm(`Are you sure you want to delete schema for ${id} database? This will delete all data.`)) {
+            const form = $(`#formDatabases-${id}`)[0];
+            const formData = new FormData(form);
+            formData.append('delete_schema', 'true');
+
+            fetch(`/update_db/${id}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('deleteSchema: Connection status: ', data.connectionStatus);
+                console.log('deleteSchema: UpdateStatus: ', data.updateStatus);
+                loadDatabaseList();
+                showNotification(`Schema with ID: ${id} deleted successfully`, 'success');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                $(`#connectionStatus-${id}`).text("Schema deletion failed");
+                showNotification(`Failed to delete schema with ID: ${id} - Error: ${error}`, 'danger');
+            });
+        }
+    }
+
+    function createSchema(id) {
+        const form = $(`#formDatabases-${id}`)[0];
+        const formData = new FormData(form);
+        formData.append('init_schema', 'true');
+
+        fetch(`/update_db/${id}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('createSchema: Connection: ', data.connectionStatus);
+            console.log('createSchema: Update: ', data.updateStatus);
+            loadDatabaseList();
+            showNotification(`Schema with ID: ${id} created successfully`, 'success');
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            $(`#connectionStatus-${id}`).text("Schema creation failed");
+            showNotification(`Failed to create schema with ID: ${id} - Error: ${error}`, 'danger');
+        });
+    }
+
+    function importDataset(id) {
+        const formData = new FormData();
+        formData.append('action', 'import');
+
+        fetch(`/manage-dataset/${id}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            $(`#datasetStatus-${id}`).text(`Dataset Status: ${data.datasetStatus}`).show();
+            showNotification(`Dataset import for ID: ${id} started successfully`, 'success');
+            if (data.datasetStatus === 'Waiting') {
+                $(`#importDataset-${id}`).hide();
+                $(`#stopImportDataset-${id}`).show();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification(`An error occurred while adding the import task for ID: ${id} - Error: ${error}`, 'danger');
+        });
+    }
+
+    function stopImportDataset(id) {
+        const formData = new FormData();
+        formData.append('action', 'stop');
+
+        fetch(`/manage-dataset/${id}`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "success") {
+                $(`#datasetStatus-${id}`).hide();
+                $(`#importDataset-${id}`).show();
+                $(`#stopImportDataset-${id}`).hide();
+                showNotification(`Dataset import for ID: ${id} stopped successfully`, 'success');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification(`An error occurred while stopping the import task for ID: ${id} - Error: ${error}`, 'danger');
+        });
+    }
+
+    function updateDatabase(id) {
+        const form = $(`#formDatabases-${id}`);
+        const data = form.serialize();
+
+        $.ajax({
+            type: 'POST',
+            url: `/update_db/${id}`,
+            data: data,
+            success: function(response) {
+                loadDatabaseList();
+                showNotification(`Update successful for ID: ${id}`, 'success');
+            },
+            error: function(xhr, status, error) {
+                alert('Error: ' + error);
+                $(`#connectionStatus-${id}`).text("Update failed");
+                showNotification(`Update failed for ID: ${id} - Error: ${error}`, 'danger');
+            }
+        });
+    }
+
+    function deleteDatabase(id) {
+        if (confirm(`Are you sure you want to delete ${id} database?`)) {
+            $.ajax({
+                type: 'POST',
+                url: `/delete_db`,
+                data: { id: id },
+                success: function(response) {
+                    loadDatabaseList();
+                    showNotification(`Database with ID: ${id} deleted successfully`, 'success');
+                },
+                error: function(xhr, status, error) {
+                    showNotification(`Failed to delete database with ID: ${id} - Error: ${error}`, 'danger');
+                }
+            });
+        }
+    }
+
+    function showNotification(message, type) {
+        const notification = $('#notification');
+        notification.html(`<div class="alert alert-${type}">${message}</div>`);
+        setTimeout(() => {
+            notification.html('');
+        }, 5000);
+    }
+
+    function loadDatabaseList() {
+        $('#databaseList').load('/database_list #databaseList');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const dbTypeSelect = document.getElementById('dbType');
+        const mongodbDatabaseField = document.getElementById('mongodbDatabaseField');
+        const connectionStringInput = document.getElementById('connectionString');
+
+        dbTypeSelect.addEventListener('change', function() {
+        if (dbTypeSelect.value === 'mongodb') {
+            mongodbDatabaseField.style.display = 'block';
+            connectionStringInput.value = 'mongodb://databaseAdmin:password@postgres:27017/';
+        } else if (dbTypeSelect.value === 'mysql') {
+            mongodbDatabaseField.style.display = 'none';
+            connectionStringInput.value = 'root:password@tcp(mysql:3306)/demo';
+        } else if (dbTypeSelect.value === 'postgres') {
+            mongodbDatabaseField.style.display = 'none';
+            connectionStringInput.value = "user=postgres password='password' dbname=dataset host=postgres port=5432 sslmode=disable";
+        } else {
+            connectionStringInput.value = '';
+        }
+        });
+    
+        $('#createForm').on('submit', function(event) {
+            event.preventDefault();
+
+            $.ajax({
+                type: 'POST',
+                url: '/create_db',
+                data: $(this).serialize(),
+                success: function(response) {
+                    let parsedResponse = JSON.parse(response);
+                    const id = parsedResponse.id;
+                    showNotification(`Connection created successfully. ID: <strong>${id}</strong>`, 'success');
+                    loadDatabaseList();
+                    const textMessage = parsedResponse.textMessage || '';
+
+                    if (textMessage) {
+                        $('#createMessage').html(`
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                ${textMessage}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `);
+                    } else {
+                        $('#createMessage').html(`
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                Connection created successfully. ID: <strong><a href="#formDatabases-${id}">${id}</a></strong>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `);      
+                    }
+                },
+                error: function(xhr, status, error) {
+                    showNotification(`Error: ${error}`, 'danger');
+                }
+            });
+        });
+    });
+
+    function updateDatabaseLoad(id) {
+        const form = $(`#formLoad-${id}`);
+        const data = form.serialize();
+    
+        $.ajax({
+            type: 'POST',
+            url: `/load_db`,
+            data: data,
+            success: function(response) {
+                console.log('Database load settings updated successfully');
+                console.log(response);
+            },
+            error: function(xhr, status, error) {
+                console.log('updateDatabaseLoad Error: ' + error);
+            }
+        });
+    }
+    
+    function updateValuePosition(val, rangeId, valueId) {
+        const valueSpan = document.getElementById(valueId);
+        const rangeInput = document.getElementById(rangeId);
+        const percentage = (rangeInput.value - rangeInput.min) / (rangeInput.max - rangeInput.min) * 100;
+        valueSpan.textContent = val;
+        requestAnimationFrame(() => {
+            valueSpan.style.left = `calc(${percentage}% - ${percentage / 100 * 16}px)`;
+        });
+    }
+    
+    function loadControlPanel() {
+        $.ajax({
+            type: 'GET',
+            url: '/',
+            success: function(response) {
+                const container = $(response).find('#controlPanelContainer').html();
+                $('#controlPanelContainer').html(container);
+                console.log('Control Panel loaded successfully');
+                initializeRangeValues(); 
+            },
+            error: function(xhr, status, error) {
+                console.log('Error loading Control Panel: ' + error);
+            }
+        });
+    }
+    
+    function initializeRangeValues() {
+        // Initialize range values
+        document.querySelectorAll('.database-form').forEach(form => {
+            const rangeInput = form.querySelector('input[type="range"]');
+            const valueSpan = form.querySelector('.range-value');
+            if (rangeInput && valueSpan) {
+                updateValuePosition(rangeInput.value, rangeInput.id, valueSpan.id);
+            }
+        });
+    }
+    
+    function openSettingsTab() {
+        const settingsTab = document.querySelector('#settings-tab');
+        if (settingsTab) {
+            settingsTab.click();
+        }
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeRangeValues();
+    
+        // Refresh database list when Control Panel tab is clicked
+        const controlTab = document.querySelector('#control-panel-tab');
+        if (controlTab) {
+            controlTab.addEventListener('click', loadControlPanel);
+        }
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+        var settingsTab = document.getElementById('settings-tab');
+        if (settingsTab) {
+            settingsTab.addEventListener('shown.bs.tab', function(event) {
+                loadDatabaseList();
+            });
+        }
+    });
     document.addEventListener('DOMContentLoaded', function() {
         var datasetTab = document.getElementById('dataset-tab');
         if (datasetTab) {
@@ -37,30 +316,6 @@
         }
     });
 </script>
-<!-- <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var controlPanelTab = document.getElementById('control-panel-tab');
-        if (controlPanelTab) {
-            controlPanelTab.addEventListener('shown.bs.tab', function(event) {
-                var controlPanelContent = document.getElementById('controlPanelContainer');
-    
-                fetch('/index')
-                    .then(response => response.text())
-                    .then(html => {
-                        var tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = html;
-                        var newContent = tempDiv.querySelector('#controlPanelContainer').innerHTML;
-                        controlPanelContent.innerHTML = newContent;
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        controlPanelContent.innerHTML = '<p>Data loading error.</p>';
-                    });
-            });
-        }
-    });
-</script> -->
-
 </body>
 </html>
 {{ end }}
