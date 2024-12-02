@@ -1,115 +1,128 @@
 {{ define "control" }}
 
-<div class="container">
-  <!-- MySQL -->
-  <div class="row">
-    <div class="col-12">
-      <h3>MySQL</h3>
-      <div class="form-group mt-3">
-        <label for="mysqlConnectionsRange">Parallel connections to the database</label>
-        <div class="range-container mb-3 mt-1" style="position: relative; width: 100%;">
-          <input type="range" class="form-control-range w-100" id="mysqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.MySQLConnections}}">
-          <span id="mysqlConnectionsValue" class="range-value">{{.LoadConfig.MySQLConnections}}</span>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mysqlSwitch1" role="switch" {{if .LoadConfig.MySQLSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="mysqlSwitch1">Repositories (Create, Read, Update, Delete)</label>
-          </div>
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mysqlSwitch2" role="switch" {{if .LoadConfig.MySQLSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="mysqlSwitch2">Pull Requests (Create, Read, Update, Delete)</label>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mysqlSwitch3" role="switch" {{if .LoadConfig.MySQLSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mysqlSwitch3">Bad Switch (SELECT by field with no index), odd connections only</label>
-          </div>
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mysqlSwitch4" role="switch" {{if .LoadConfig.MySQLSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mysqlSwitch4">Bad Switch (SELECT by date field in JSON), odd connections only</label>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- PostgreSQL -->
+<div class="container" id="controlPanelContainer">
+  {{ range .DatabasesLoad }}
   <div class="row mt-3">
     <div class="col-12">
-      <h3>PostgreSQL</h3>
-      <div class="form-group mt-3">
-        <label for="postgresqlConnectionsRange">Parallel connections to the database</label>
-        <div class="range-container" style="position: relative; width: 100%;">
-          <input type="range" class="form-control-range w-100" id="postgresqlConnectionsRange" min="0" max="50" value="{{.LoadConfig.PostgreSQLConnections}}">
-          <span id="postgresqlConnectionsValue" class="range-value">{{.LoadConfig.PostgreSQLConnections}}</span>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="postgresSwitch1" role="switch" {{if .LoadConfig.PostgresSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="postgresSwitch1">Repositories (Create, Read, Update, Delete)</label>
-          </div>
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="postgresSwitch2" role="switch" {{if .LoadConfig.PostgresSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="postgresSwitch2">Pulls (Create, Read, Update, Delete)</label>
+      <form id="formLoad-{{ .id }}" class="database-form mb-2 py-3">
+        <input type="hidden" name="id" value="{{ .id }}">
+        <h3>{{ if eq .dbType "mysql" }}MySQL{{ else if eq .dbType "postgres" }}PostgreSQL{{ else if eq .dbType "mongodb" }}MongoDB{{ end }} <span class="text-muted">/ id: {{ .id }}</span></h3>
+        <div class="form-group mt-3">
+          <label for="connectionsRange-{{ .id }}">Parallel connections to the database</label>
+          <div class="range-container mb-3 mt-1" style="position: relative; width: 100%;">
+            <input type="range" class="form-control-range w-100" id="connectionsRange-{{ .id }}" name="connections" min="0" max="100" value="{{ .connections }}" oninput="updateValuePosition(this.value, 'connectionsRange-{{ .id }}', 'rangeValue-{{ .id }}'); updateDatabaseLoad('{{ .id }}')">
+            <span class="range-value" id="rangeValue-{{ .id }}">{{ .connections }}</span>
           </div>
         </div>
-        <div class="col-md-6">
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="postgresSwitch3" role="switch" {{if .LoadConfig.PostgresSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="postgresSwitch3">Bad Switch (Select with RAND in SQL), odd connections only</label>
+        <div class="row">
+          <div class="col-md-6">
+            <div class="form-check form-switch my-4">
+              <input class="form-check-input" type="checkbox" id="switch1-{{ .id }}" name="switch1" role="switch" {{ if eq .switch1 "true" }}checked{{ end }} onchange="updateDatabaseLoad('{{ .id }}')">
+              <label class="form-check-label" for="switch1-{{ .id }}">Simple Query (Low Complexity)</label>
+            </div>
+            <div class="form-check form-switch my-4">
+              <input class="form-check-input" type="checkbox" id="switch2-{{ .id }}" name="switch2" role="switch" {{ if eq .switch2 "true" }}checked{{ end }} onchange="updateDatabaseLoad('{{ .id }}')">
+              <label class="form-check-label" for="switch2-{{ .id }}">Standard Query (Moderate Complexity)</label>
+            </div>
           </div>
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="postgresSwitch4" role="switch" {{if .LoadConfig.PostgresSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="postgresSwitch4">Bad Switch, odd connections only (SELECT by date field in JSON)</label>
+          <div class="col-md-6">
+            <div class="form-check form-switch my-4">
+              <input class="form-check-input" type="checkbox" id="switch3-{{ .id }}" name="switch3" role="switch" {{ if eq .switch3 "true" }}checked{{ end }} style="color: red;" onchange="updateDatabaseLoad('{{ .id }}')">
+              <label class="form-check-label" for="switch3-{{ .id }}">Advanced Query (High Complexity)</label>
+            </div>
+            <div class="form-check form-switch my-4">
+              <input class="form-check-input" type="checkbox" id="switch4-{{ .id }}" name="switch4" role="switch" {{ if eq .switch4 "true" }}checked{{ end }} style="color: red;" onchange="updateDatabaseLoad('{{ .id }}')">
+              <label class="form-check-label" for="switch4-{{ .id }}">Extreme Query (Very High Complexity)</label>
+            </div>
           </div>
         </div>
-      </div>
+      </form>
     </div>
   </div>
-
-  <!-- MongoDB -->
-  <div class="row  mb-4">
+  <hr>
+  {{ else }}
+  <div class="row mt-3">
     <div class="col-12">
-      <h3>MongoDB</h3>
-      <div class="form-group mt-3">
-        <label for="mongodbConnectionsRange">Parallel connections to the database</label>
-        <div class="range-container mb-3" style="position: relative; width: 100%;">
-          <input type="range" class="form-control-range w-100" id="mongodbConnectionsRange" min="0" max="100" value="{{.LoadConfig.MongoDBConnections}}">
-          <span id="mongodbConnectionsValue" class="range-value">{{.LoadConfig.MongoDBConnections}}</span>
-        </div>
-      </div>
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mongodbSwitch1" role="switch" {{if .LoadConfig.MongoDBSwitch1}}checked{{end}}>
-            <label class="form-check-label" for="mongodbSwitch1">Select and Insert repositories</label>
-          </div>
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mongodbSwitch2" role="switch" {{if .LoadConfig.MongoDBSwitch2}}checked{{end}}>
-            <label class="form-check-label" for="mongodbSwitch2">Select and Insert pulls</label>
-          </div>
-        </div>
-        <div class="col-md-6">
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mongodbSwitch3" role="switch" {{if .LoadConfig.MongoDBSwitch3}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mongodbSwitch3">Insert Many pulls & repos</label>
-          </div>
-          <div class="form-check form-switch my-4">
-            <input class="form-check-input" type="checkbox" id="mongodbSwitch4" role="switch" {{if .LoadConfig.MongoDBSwitch4}}checked{{end}} style="color: red;">
-            <label class="form-check-label" for="mongodbSwitch4">Filter by date and stars</label>
-          </div>
-        </div>
+      <div class="no-databases text-center my-4 p-3 border rounded">
+        <p>No databases with load enabled found. Please go to <a href="#" onclick="openSettingsTab()">Settings</a> and create databases.</p>
       </div>
     </div>
   </div>
-
+  {{ end }}
 </div>
 
-{{ end }}
+<script>
+function updateDatabaseLoad(id) {
+    const form = $(`#formLoad-${id}`);
+    const data = form.serialize();
 
+    $.ajax({
+        type: 'POST',
+        url: `/load_db`,
+        data: data,
+        success: function(response) {
+            console.log('Database load settings updated successfully');
+            console.log(response);
+        },
+        error: function(xhr, status, error) {
+            console.log('updateDatabaseLoad Error: ' + error);
+        }
+    });
+}
+
+function updateValuePosition(val, rangeId, valueId) {
+    const valueSpan = document.getElementById(valueId);
+    const rangeInput = document.getElementById(rangeId);
+    const percentage = (rangeInput.value - rangeInput.min) / (rangeInput.max - rangeInput.min) * 100;
+    valueSpan.textContent = val;
+    requestAnimationFrame(() => {
+        valueSpan.style.left = `calc(${percentage}% - ${percentage / 100 * 16}px)`;
+    });
+}
+
+function loadControlPanel() {
+    $.ajax({
+        type: 'GET',
+        url: '/',
+        success: function(response) {
+            const container = $(response).find('#controlPanelContainer').html();
+            $('#controlPanelContainer').html(container);
+            console.log('Control Panel loaded successfully');
+            initializeRangeValues(); 
+        },
+        error: function(xhr, status, error) {
+            console.log('Error loading Control Panel: ' + error);
+        }
+    });
+}
+
+function initializeRangeValues() {
+    // Initialize range values
+    document.querySelectorAll('.database-form').forEach(form => {
+        const rangeInput = form.querySelector('input[type="range"]');
+        const valueSpan = form.querySelector('.range-value');
+        if (rangeInput && valueSpan) {
+            updateValuePosition(rangeInput.value, rangeInput.id, valueSpan.id);
+        }
+    });
+}
+
+function openSettingsTab() {
+    const settingsTab = document.querySelector('#settings-tab');
+    if (settingsTab) {
+        settingsTab.click();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeRangeValues();
+
+    // Refresh database list when Control Panel tab is clicked
+    const controlTab = document.querySelector('#control-panel-tab');
+    if (controlTab) {
+        controlTab.addEventListener('click', loadControlPanel);
+    }
+});
+</script>
+
+{{ end }}

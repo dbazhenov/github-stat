@@ -4,15 +4,14 @@ debug: "false"
 # Dataset import configuration
 # Options for datasetLoadType:
 # - csv: Load data from CSV files.
-# - github_chunks: Get data from the GitHub API and write to the database in portions for each repository.
-# - github_consistent: First get all data from the GitHub API, then start writing to the databases.
-datasetLoadType: "github_chunks" # Options: csv, github_chunks, github_consistent
+# - github: Get data from the GitHub API and write to the database in portions for each repository.
+datasetLoadType: "github" # Options: csv, github
 
 # Delay between data imports and updates, in minutes. Useful if the number of requests to the GitHub API is limited.
 delayMinutes: "10"
 
 # Parameters for loading a dataset from the GitHub API.
-# Required if datasetLoadType is set to github_chunks or github_consistent.
+# Required if datasetLoadType is set to github.
 githubToken: "" # Required parameter, get it from https://github.com/settings/tokens
 githubOrg: "percona"
 
@@ -110,9 +109,6 @@ loadEnvironments:
         value: "true"
 
 # Secret data
-mongodbPassword: "password"
-pgPassword: "password"
-mysqlPassword: "password"
 valkeyPassword: ""
 
 # Configurations for the application
@@ -120,15 +116,3 @@ valkeyAddr: "demo-app-valkey-service"
 valkeyPort: "6379"
 valkeyDB: "0"
 valkeyAllowEmptyPassword: "yes"
-mongodbUser: "databaseAdmin"
-mongodbDB: "dataset"
-mongodbHost: "localhost"
-mongodbPort: "27017"
-pgUser: "postgres"
-pgDB: "dataset"
-pgHost: "localhost"
-pgPort: "5432"
-mysqlUser: "root"
-mysqlDB: "dataset"
-mysqlHost: "localhost"
-mysqlPort: "3306"

@@ -12,22 +12,7 @@ import (
 
 	"github.com/google/go-github/github"
 	_ "github.com/lib/pq"
-
-	app "github-stat/internal"
 )
-
-func Connect(envVars app.EnvVars) (*sql.DB, error) {
-	dsn := fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s sslmode=disable",
-		envVars.Postgres.User, envVars.Postgres.Password, envVars.Postgres.DB, envVars.Postgres.Host, envVars.Postgres.Port)
-
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		log.Printf("PostgreSQL Connect: Error: %s", err)
-		return nil, err
-	}
-
-	return db, nil
-}
 
 func ConnectByString(connection_string string) (*sql.DB, error) {
 
@@ -70,15 +55,6 @@ func CheckPostgreSQL(connectionString string) string {
 	}
 
 	return "Connected"
-}
-
-func GetConnectionString(envVars app.EnvVars) string {
-	return fmt.Sprintf("user=%s password='%s' dbname=%s host=%s port=%s sslmode=disable",
-		app.Config.Postgres.User,
-		app.Config.Postgres.Password,
-		app.Config.Postgres.DB,
-		app.Config.Postgres.Host,
-		app.Config.Postgres.Port)
 }
 
 func SelectInt(db *sql.DB, query string) (int, error) {
@@ -162,27 +138,6 @@ func SelectPulls(db *sql.DB, query string) ([]*github.PullRequest, error) {
 	return pullRequests, nil
 }
 
-func InsertPulls(db *sql.DB, pullRequests []*github.PullRequest, table string) error {
-	for _, pull := range pullRequests {
-		id := pull.ID
-		pullJSON, err := json.Marshal(pull)
-		if err != nil {
-			return err
-		}
-
-		query := fmt.Sprintf(`INSERT INTO github.%s (id, repo, data) 
-			VALUES ($1, $2, $3) 
-			ON CONFLICT (id, repo) DO UPDATE SET data = $3`, table)
-
-		_, err = db.Exec(query, id, *pull.Base.Repo.Name, pullJSON)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func CreateTable(db *sql.DB, name string) error {
 	query := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS github.%s (
@@ -236,9 +191,9 @@ func executeSQL(db *sql.DB, query string) error {
 	return fmt.Errorf("reached maximum retry limit for query: %s", query)
 }
 
-func InitDB(connection_string string) error {
+func InitSchema(connection_string string) error {
 
-	newDBName, err := getDbName(connection_string)
+	newDBName, err := GetDbName(connection_string)
 	if err != nil {
 		log.Printf("getDbName: Error: %v\n", err)
 		return err
@@ -299,11 +254,7 @@ func InitDB(connection_string string) error {
 			data JSON,
 			PRIMARY KEY (id, repo)
 		);
-        CREATE TABLE IF NOT EXISTS github.reports_runs (
-            id SERIAL PRIMARY KEY,
-            data JSONB
-        );
-        CREATE TABLE IF NOT EXISTS github.reports_databases (
+        CREATE TABLE IF NOT EXISTS github.reports_dataset (
             id SERIAL PRIMARY KEY,
             data JSONB
         );
@@ -320,7 +271,115 @@ func InitDB(connection_string string) error {
 	return nil
 }
 
-func getDbName(connStr string) (string, error) {
+// getLatestUpdatesFromPostgres retrieves the latest update times for each repository from a PostgreSQL database.
+// It connects to the PostgreSQL database using the provided connection string and queries the update times.
+//
+// Arguments:
+//   - dbConfig: map[string]string containing the database configuration,
+//     including the connection string under the key "connectionString".
+//
+// Returns:
+//   - map[string]string: A map where keys are repository names and values are the latest update times.
+//   - error: An error object if an error occurs, otherwise nil.
+func GetPullsLatestUpdates(dbConfig map[string]string) (map[string]string, error) {
+	ctx := context.Background()
+
+	// Connect to the PostgreSQL database.
+	db, err := ConnectByString(dbConfig["connectionString"])
+	if err != nil {
+		log.Printf("Check Pulls Latest Updates: PostgreSQL: Error: %s", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	query := `
+        SELECT
+            repo,
+            MAX(data->>'updated_at') AS updated_at
+        FROM
+            github.pulls
+        GROUP BY
+            repo
+        ORDER BY
+            updated_at DESC;
+    `
+
+	// Execute the query to get the latest update times.
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	lastUpdates := make(map[string]string)
+	// Iterate over the result set and populate the map with the latest update times.
+	for rows.Next() {
+		var repo string
+		var updatedAt string
+		if err := rows.Scan(&repo, &updatedAt); err != nil {
+			return nil, err
+		}
+		lastUpdates[repo] = updatedAt
+	}
+
+	// Check for errors during the iteration over the result set.
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return lastUpdates, nil
+}
+
+func DeleteSchema(connection_string string) error {
+
+	newDBName, err := GetDbName(connection_string)
+	if err != nil {
+		log.Printf("getDbName: Error: %v\n", err)
+		return err
+	}
+	log.Printf("getDbName: Database name to delete: %s", newDBName)
+
+	connect_postgres_db_string := strings.Replace(connection_string, fmt.Sprintf("dbname=%s", newDBName), "dbname=postgres", 1)
+	log.Printf("DeleteDB: Connect String to Postgres DB: %s", connect_postgres_db_string)
+
+	mainDB, err := ConnectByString(connect_postgres_db_string)
+	if err != nil {
+		log.Printf("DeleteDB: Connect to Main DB Error: %v", err)
+		return err
+	}
+	defer mainDB.Close()
+
+	dbExists, err := databaseExists(mainDB, newDBName)
+	if err != nil {
+		log.Printf("Error checking if database exists: %v", err)
+		return err
+	}
+
+	if dbExists {
+		log.Printf("Database %s exists, terminating active connections", newDBName)
+
+		terminateConnectionsSQL := fmt.Sprintf("SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = '%s' AND pid <> pg_backend_pid();", newDBName)
+		_, err := mainDB.Exec(terminateConnectionsSQL)
+		if err != nil {
+			log.Printf("Error terminating active connections for database %s: %v", newDBName, err)
+			return err
+		}
+
+		log.Printf("Deleting database %s", newDBName)
+		err = executeSQL(mainDB, fmt.Sprintf("DROP DATABASE %s;", newDBName))
+		if err != nil {
+			log.Printf("Error deleting database %s: %v", newDBName, err)
+			return err
+		}
+		log.Printf("Database %s deleted successfully", newDBName)
+	} else {
+		log.Printf("Database %s does not exist", newDBName)
+	}
+
+	return nil
+}
+
+func GetDbName(connStr string) (string, error) {
 	params := strings.Split(connStr, " ")
 	for _, param := range params {
 		keyValue := strings.SplitN(param, "=", 2)

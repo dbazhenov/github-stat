@@ -9,10 +9,7 @@ import (
 )
 
 type EnvVars struct {
-	MySQL         ConfigMySQL
-	MongoDB       ConfigMongoDB
 	GitHub        ConfigGitHub
-	Postgres      ConfigPostgres
 	Valkey        ConfigValkey
 	ControlPanel  ConfigControlPanel
 	App           ConfigApp
@@ -22,7 +19,6 @@ type EnvVars struct {
 type ConfigApp struct {
 	DelayMinutes     int
 	DatasetLoadType  string
-	LoadSleep        int
 	Debug            bool
 	DatasetDemoRepos string
 	DatasetDemoPulls string
@@ -42,36 +38,6 @@ type ConfigControlPanel struct {
 type ConfigGitHub struct {
 	Token        string
 	Organisation string
-}
-
-type ConfigMySQL struct {
-	DB               string
-	User             string
-	Password         string
-	Host             string
-	Port             string
-	ConnectionString string
-	ConnectionStatus string
-}
-
-type ConfigMongoDB struct {
-	DB               string
-	User             string
-	Password         string
-	Host             string
-	Port             string
-	ConnectionString string
-	ConnectionStatus string
-}
-
-type ConfigPostgres struct {
-	DB               string
-	User             string
-	Password         string
-	Host             string
-	Port             string
-	ConnectionString string
-	ConnectionStatus string
 }
 
 type ConfigValkey struct {
@@ -98,24 +64,6 @@ func GetEnvVars() (EnvVars, error) {
 		log.Println("Configuration: GitHub Token is not set. The script will run in limited mode, only repositories will be fetched. Add Github Token to receive Pull Requests data.")
 	}
 
-	envVars.MongoDB.User = os.Getenv("MONGODB_USER")
-	envVars.MongoDB.Password = os.Getenv("MONGODB_PASSWORD")
-	envVars.MongoDB.DB = os.Getenv("MONGODB_DB")
-	envVars.MongoDB.Host = os.Getenv("MONGODB_HOST")
-	envVars.MongoDB.Port = os.Getenv("MONGODB_PORT")
-
-	envVars.Postgres.User = os.Getenv("PG_USER")
-	envVars.Postgres.Password = os.Getenv("PG_PASSWORD")
-	envVars.Postgres.DB = os.Getenv("PG_DB")
-	envVars.Postgres.Host = os.Getenv("PG_HOST")
-	envVars.Postgres.Port = os.Getenv("PG_PORT")
-
-	envVars.MySQL.User = os.Getenv("MYSQL_USER")
-	envVars.MySQL.Password = os.Getenv("MYSQL_PASSWORD")
-	envVars.MySQL.DB = os.Getenv("MYSQL_DB")
-	envVars.MySQL.Host = os.Getenv("MYSQL_HOST")
-	envVars.MySQL.Port = os.Getenv("MYSQL_PORT")
-
 	envVars.Valkey.Addr = os.Getenv("VALKEY_ADDR")
 	envVars.Valkey.Port = os.Getenv("VALKEY_PORT")
 	envVars.Valkey.Password = os.Getenv("VALKEY_PASSWORD")
@@ -136,6 +84,28 @@ func GetEnvVars() (EnvVars, error) {
 	envVars.App.DelayMinutes, _ = parseInt("DELAY_MINUTES")
 
 	return envVars, nil
+}
+
+func InitConfig() {
+	log.Print("App: Read config")
+
+	envVars, err := GetEnvVars()
+	if err != nil {
+		log.Printf("Error loading .env file")
+	}
+
+	Config = envVars
+}
+
+func GetConfig() EnvVars {
+	log.Print("App: Read config")
+
+	envVars, err := GetEnvVars()
+	if err != nil {
+		log.Printf("Error loading .env file")
+	}
+
+	return envVars
 }
 
 func parseInt(key string) (int, error) {
@@ -160,26 +130,4 @@ func parseBool(key string) (bool, error) {
 	}
 
 	return result, nil
-}
-
-func GetConfig() EnvVars {
-	log.Print("App: Read config")
-
-	envVars, err := GetEnvVars()
-	if err != nil {
-		log.Printf("Error loading .env file")
-	}
-
-	return envVars
-}
-
-func InitConfig() {
-	log.Print("App: Read config")
-
-	envVars, err := GetEnvVars()
-	if err != nil {
-		log.Printf("Error loading .env file")
-	}
-
-	Config = envVars
 }

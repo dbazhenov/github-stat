@@ -1,48 +1,37 @@
 package internal
 
-type Load struct {
-	MySQLConnections      int  `json:"mysql_connections"`
-	PostgreSQLConnections int  `json:"postgresql_connections"`
-	MongoDBConnections    int  `json:"mongodb_connections"`
-	MySQLSwitch1          bool `json:"mysql_switch_1"`
-	MySQLSwitch2          bool `json:"mysql_switch_2"`
-	MySQLSwitch3          bool `json:"mysql_switch_3"`
-	MySQLSwitch4          bool `json:"mysql_switch_4"`
-	PostgresSwitch1       bool `json:"postgres_switch_1"`
-	PostgresSwitch2       bool `json:"postgres_switch_2"`
-	PostgresSwitch3       bool `json:"postgres_switch_3"`
-	PostgresSwitch4       bool `json:"postgres_switch_4"`
-	MongoDBSwitch1        bool `json:"mongodb_switch_1"`
-	MongoDBSwitch2        bool `json:"mongodb_switch_2"`
-	MongoDBSwitch3        bool `json:"mongodb_switch_3"`
-	MongoDBSwitch4        bool `json:"mongodb_switch_4"`
-	MySQLSleep            int  `json:"mysql_sleep"`
-	MongoDBSleep          int  `json:"mongodb_sleep"`
-	PostgresSleep         int  `json:"postgres_sleep"`
-}
-
-type Connections struct {
-	MySQLConnectionString    string `json:"mysql_connection_string"`
-	MySQLStatus              string `json:"mysql_status"`
-	PostgresConnectionString string `json:"postgres_connection_string"`
-	PostgresStatus           string `json:"postgres_status"`
-	MongoDBConnectionString  string `json:"mongodb_connection_string"`
-	MongoDBDatabase          string `json:"mongodb_database"`
-	MongoDBStatus            string `json:"mongodb_status"`
-}
-
+// IndexData holds the various data related to databases and datasets
 type IndexData struct {
-	LoadConfig Load
-	Settings   Connections
-	Dataset    struct {
-		MySQL      Database
-		PostgreSQL Database
-		MongoDB    Database
-	}
+	Databases        []map[string]string // Database configurations from Redis
+	DatabasesLoad    []map[string]string // Filtered database configurations with loadSwitch == true
+	DatabasesDataset []DatabaseInfo      // Data from databases in an array format
+	DatasetState     DatasetState        // Status and information about the dataset
 }
 
-type Database struct {
-	DBName       string `json:"db_name"`
-	Repositories int    `json:"repositories"`
-	PullRequests int    `json:"pull_requests"`
+// DatasetInfo contains information about the data from the dataset
+type DatasetInfo struct {
+	DBName       string `json:"db_name"`       // Name of the database
+	Repositories int    `json:"repositories"`  // Number of repositories
+	PullRequests int    `json:"pull_requests"` // Number of pull requests
+	LastUpdate   string `json:"last_update"`   // Last update date
+}
+
+// DatabaseInfo contains detailed information about the database for rendering in a table
+type DatabaseInfo struct {
+	ID           string `json:"id"`            // Database identifier
+	DBType       string `json:"db_type"`       // Type of database (mysql, postgres, mongodb)
+	DBName       string `json:"db_name"`       // Name of the database
+	Repositories int    `json:"repositories"`  // Number of repositories
+	PullRequests int    `json:"pull_requests"` // Number of pull requests
+	LastUpdate   string `json:"last_update"`   // Last update date
+	Status       string `json:"status"`        // Status of the dataset
+}
+
+// DatasetState contains the state of the dataset retrieved from Valkey
+type DatasetState struct {
+	Status     string `json:"status"`
+	Type       string `json:"type"`
+	ReposCount int    `json:"repos_count"`
+	PullsCount int    `json:"pulls_count"`
+	LastUpdate string `json:"last_update"`
 }
