@@ -193,7 +193,7 @@ func executeSQL(db *sql.DB, query string) error {
 
 func InitSchema(connection_string string) error {
 
-	newDBName, err := getDbName(connection_string)
+	newDBName, err := GetDbName(connection_string)
 	if err != nil {
 		log.Printf("getDbName: Error: %v\n", err)
 		return err
@@ -332,7 +332,7 @@ func GetPullsLatestUpdates(dbConfig map[string]string) (map[string]string, error
 
 func DeleteSchema(connection_string string) error {
 
-	newDBName, err := getDbName(connection_string)
+	newDBName, err := GetDbName(connection_string)
 	if err != nil {
 		log.Printf("getDbName: Error: %v\n", err)
 		return err
@@ -379,7 +379,7 @@ func DeleteSchema(connection_string string) error {
 	return nil
 }
 
-func getDbName(connStr string) (string, error) {
+func GetDbName(connStr string) (string, error) {
 	params := strings.Split(connStr, " ")
 	for _, param := range params {
 		keyValue := strings.SplitN(param, "=", 2)

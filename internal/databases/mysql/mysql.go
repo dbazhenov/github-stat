@@ -232,7 +232,7 @@ func DropTable(db *sql.DB, name string) (string, error) {
 }
 
 func InitSchema(connection_string string) error {
-	newDBName, err := getDbName(connection_string)
+	newDBName, err := GetDbName(connection_string)
 	if err != nil {
 		log.Printf("getDbName: Error: %v\n", err)
 		return err
@@ -300,7 +300,7 @@ func InitSchema(connection_string string) error {
 
 func DeleteSchema(connection_string string) error {
 
-	newDBName, err := getDbName(connection_string)
+	newDBName, err := GetDbName(connection_string)
 	if err != nil {
 		log.Printf("getDbName: Error: %v\n", err)
 		return err
@@ -338,7 +338,7 @@ func DeleteSchema(connection_string string) error {
 	return nil
 }
 
-func getDbName(connStr string) (string, error) {
+func GetDbName(connStr string) (string, error) {
 	parts := strings.Split(connStr, "/")
 	if len(parts) < 2 {
 		return "", errors.New("database name not found in connection string")

@@ -257,35 +257,42 @@ func getMySQLData(connectionString string) (app.DatasetInfo, error) {
 	err = my.QueryRow(`SELECT DATABASE();`).Scan(&dbName)
 	if err != nil {
 		log.Printf("Error: Dataset: MySQL: Getting MySQL DB name: %v", err)
-	}
+		dbName, err = mysql.GetDbName(connectionString)
+		if err != nil {
+			log.Printf("Error: Dataset: MySQL: Getting PostgreSQL DB name: %v", err)
+		}
+		return app.DatasetInfo{
+			DBName: dbName,
+		}, nil
+	} else {
+		mysql_pulls, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
+		if err != nil {
+			log.Printf("Error: Dataset: MySQL: %s: Pulls: %v", dbName, err)
+		}
+		mysql_repositories, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
+		if err != nil {
+			log.Printf("Error: Dataset: MySQL: %s: Repos: %v", dbName, err)
+		}
 
-	mysql_pulls, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM pulls;`)
-	if err != nil {
-		log.Printf("Error: Dataset: MySQL: Pulls: %v", err)
-	}
-	mysql_repositories, err := mysql.SelectInt(my, `SELECT COUNT(*) FROM repositories;`)
-	if err != nil {
-		log.Printf("Error: Dataset: MySQL: Repos: %v", err)
-	}
+		// Get the latest update from the reports_dataset table
+		var lastUpdate string
+		err = my.QueryRow(`
+			SELECT JSON_UNQUOTE(JSON_EXTRACT(data, '$.finished_at'))
+			FROM reports_dataset
+			ORDER BY JSON_UNQUOTE(JSON_EXTRACT(data, '$.finished_at')) DESC
+			LIMIT 1
+		`).Scan(&lastUpdate)
+		if err != nil {
+			log.Printf("Error: Dataset: MySQL: %s: Last update: %v", dbName, err)
+		}
 
-	// Get the latest update from the reports_dataset table
-	var lastUpdate string
-	err = my.QueryRow(`
-        SELECT JSON_UNQUOTE(JSON_EXTRACT(data, '$.finished_at'))
-        FROM reports_dataset
-        ORDER BY JSON_UNQUOTE(JSON_EXTRACT(data, '$.finished_at')) DESC
-        LIMIT 1
-    `).Scan(&lastUpdate)
-	if err != nil {
-		log.Printf("Error: Dataset: MySQL: Last update: %v", err)
+		return app.DatasetInfo{
+			DBName:       dbName,
+			Repositories: mysql_repositories,
+			PullRequests: mysql_pulls,
+			LastUpdate:   lastUpdate,
+		}, nil
 	}
-
-	return app.DatasetInfo{
-		DBName:       dbName,
-		Repositories: mysql_repositories,
-		PullRequests: mysql_pulls,
-		LastUpdate:   lastUpdate,
-	}, nil
 }
 
 // getPostgresData retrieves the dataset information from a PostgreSQL database.
@@ -293,7 +300,7 @@ func getPostgresData(connectionString string) (app.DatasetInfo, error) {
 	pg, err := postgres.ConnectByString(connectionString)
 	if err != nil {
 		log.Printf("Error: Dataset: Postgres: Connect: %s", err)
-		return app.DatasetInfo{}, err
+
 	}
 	defer pg.Close()
 
@@ -301,35 +308,44 @@ func getPostgresData(connectionString string) (app.DatasetInfo, error) {
 	err = pg.QueryRow(`SELECT current_database();`).Scan(&dbName)
 	if err != nil {
 		log.Printf("Error: Dataset: Postgres: Getting PostgreSQL DB name: %v", err)
+		dbName, err = postgres.GetDbName(connectionString)
+		if err != nil {
+			log.Printf("Error: Dataset: Postgres: Getting PostgreSQL DB name: %v", err)
+		}
+		return app.DatasetInfo{
+			DBName: dbName,
+		}, nil
+	} else {
+
+		pg_pulls, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
+		if err != nil {
+			log.Printf("Error: Dataset: Postgres: %s: Pulls: %v", dbName, err)
+		}
+		pg_repositories, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
+		if err != nil {
+			log.Printf("Error: Dataset: Postgres: %s: Repos: %v", dbName, err)
+		}
+
+		// Get the latest update from the reports_dataset table
+		var lastUpdate string
+		err = pg.QueryRow(`
+			SELECT data->>'finished_at'
+			FROM github.reports_dataset
+			ORDER BY data->>'finished_at' DESC
+			LIMIT 1
+		`).Scan(&lastUpdate)
+		if err != nil {
+			log.Printf("Error: Dataset: Postgres: %s: Last update: %v", dbName, err)
+		}
+
+		return app.DatasetInfo{
+			DBName:       dbName,
+			Repositories: pg_repositories,
+			PullRequests: pg_pulls,
+			LastUpdate:   lastUpdate,
+		}, nil
 	}
 
-	pg_pulls, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.pulls;`)
-	if err != nil {
-		log.Printf("Error: Dataset: Postgres: Pulls: %v", err)
-	}
-	pg_repositories, err := postgres.SelectInt(pg, `SELECT COUNT(*) FROM github.repositories;`)
-	if err != nil {
-		log.Printf("Error: Dataset: Postgres: Repos: %v", err)
-	}
-
-	// Get the latest update from the reports_dataset table
-	var lastUpdate string
-	err = pg.QueryRow(`
-        SELECT data->>'finished_at'
-        FROM github.reports_dataset
-        ORDER BY data->>'finished_at' DESC
-        LIMIT 1
-    `).Scan(&lastUpdate)
-	if err != nil {
-		log.Printf("Error: Dataset: Postgres: Last update: %v", err)
-	}
-
-	return app.DatasetInfo{
-		DBName:       dbName,
-		Repositories: pg_repositories,
-		PullRequests: pg_pulls,
-		LastUpdate:   lastUpdate,
-	}, nil
 }
 
 // getMongoDBData retrieves the dataset information from a MongoDB database.
@@ -413,7 +429,7 @@ func createDatabase(w http.ResponseWriter, r *http.Request) {
 
 			} else if strings.Contains(fields["connectionStatus"], "Unknown database") {
 
-				fields["updateStatus"] = "Need to create a database and schema. Click the Create Schema button."
+				fields["updateStatus"] = fmt.Sprintf("Database connection (ID: %s) has been successfully created, but the database schema is missing. To create it, click the 'Create Schema' button below.", id)
 				fields["schemaStatus"] = "false"
 
 			}
@@ -426,7 +442,7 @@ func createDatabase(w http.ResponseWriter, r *http.Request) {
 
 			} else if strings.Contains(fields["connectionStatus"], "does not exist") || strings.Contains(fields["connectionStatus"], "server login has been failing") {
 
-				fields["updateStatus"] = "Need to create a database and schema. Click the Create Schema button."
+				fields["updateStatus"] = fmt.Sprintf("Database connection (ID: %s) has been successfully created, but the database schema is missing. To create it, click the 'Create Schema' button below.", id)
 				fields["schemaStatus"] = "false"
 
 			}
@@ -575,7 +591,7 @@ func updateDatabase(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			} else {
-				updateStatus = "Need to create a database and schema. Click the Create Schema button."
+				updateStatus = "You need to create a test database and a schema. Click the Create schema button."
 				currentDB["updateStatus"] = updateStatus
 				currentDB["schemaStatus"] = "false"
 			}
@@ -606,7 +622,7 @@ func updateDatabase(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			} else {
-				updateStatus = "Need to create a database and schema. Click the Create Schema button."
+				updateStatus = "You need to create a test database and a schema. Click the Create schema button."
 				currentDB["updateStatus"] = updateStatus
 				currentDB["schemaStatus"] = "false"
 			}

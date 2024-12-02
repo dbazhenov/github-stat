@@ -206,6 +206,16 @@
                     const id = parsedResponse.id;
                     showNotification(`Connection created successfully. ID: <strong>${id}</strong>`, 'success');
                     loadDatabaseList();
+                    const updateStatus = parsedResponse.updateStatus || '';
+
+                    if (updateStatus) {
+                        $('#createMessage').html(`
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                ${updateStatus}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `);
+                    }
                 },
                 error: function(xhr, status, error) {
                     showNotification(`Error: ${error}`, 'danger');

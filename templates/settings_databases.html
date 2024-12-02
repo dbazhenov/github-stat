@@ -62,7 +62,7 @@
       {{ end }}
 
       {{ if .datasetStatus }}
-        {{ if eq .datasetStatus "Done" }}
+        {{ if or (eq .datasetStatus "Done") (eq .datasetStatus "Error") }}
           <button type="button" class="btn btn-info" id="importDataset-{{ .id }}" onclick="importDataset('{{ .id }}')">Update Dataset</button>
         {{ else if eq .datasetStatus "Waiting" }}
           <button type="button" class="btn btn-info" id="importDataset-{{ .id }}" onclick="importDataset('{{ .id }}')" style="display: none;">Import Dataset</button>
