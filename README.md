@@ -35,29 +35,55 @@ How it works technically:
 
 1. Clone the project repository
 
-`git clone git@github.com:dbazhenov/github-stat.git`
+```
+git clone git@github.com:dbazhenov/github-stat.git
+```
 
-2. Run the environment, this will run the three databases locally. Check docker-compose.yaml and add the correct versions or configurations if necessary.
+2. Copy or rename `.env.example` to `.env`. Set the parameters in the .env file. 
 
-`docker compose up -d`
+3. Run the environment. 
 
-3. Copy or rename `.env.example` to `.env`. Set the parameters in the .env file
+```
+docker compose up -d
+```
 
-- `GITHUB_ORG` - GitHub organization whose repositories will be investigated. For example, percona contains 193 repositories. 
+docker-compose launches three databases (MySQL, Postgres, MongoDB) and the Demo application.
 
-- `GITHUB_TOKEN` - Your personalized GitHub Token. If left empty, the limit is 60 API requests per hour, which is enough for a test run. If you add token then 5000 requests per hour. You can get a Token in your GitHub profile settings, it's free, instructions at [the link](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+4. Launch the application at `localhost:3000` in your browser.
 
-4. Run the Control Panel script
+5. Open the Settings tab and create connections to the databases you want to load. Connection options are available in docker-compose.yaml
+
+    - MySQL: `root:password@tcp(mysql:3306)/dataset`
+
+    - Postgres: `user=postgres password='password' dbname=dataset host=postgres port=5432 sslmode=disable`
+
+    - MongoDB: `mongodb://databaseAdmin:password@mongodb:27017/`
+
+6. On the Settings tab, for each database, load the test dataset by clicking the “Create schema” and “Import Dataset” buttons. By default a small dataset from a CSV file (26 repos and 4600 PRs) will be imported, to import the full dataset you need to add a GitHub Token to the .env file and change the import type to github.
+
+7. Turn on the Enable Load setting and open the Load Generator Control Panel tab.
+
+8. Change load adjustments and check the results in PMM at `localhost:8081`
+
+## Development environment
+
+0. Run the environment. 
+
+```
+docker compose -f docker-compose-dev.yaml up -d
+```
+
+1. Run the Control Panel script
 
 `go run cmd/web/main.go`
 
 Launch the control panel in your browser (localhost:3000).
 
-5. Run the Dataset loader script
+2. Run the Dataset loader script
 
 `go run cmd/dataset/main.go`
 
-6. Run the Load Generator script
+3. Run the Load Generator script
 
 `go run cmd/load/main.go`
 
@@ -85,7 +111,9 @@ Create databases if you don't have any.
 
 3. Install the PMM, e.g. with HELM
 
-`helm repo add percona https://percona.github.io/percona-helm-charts/`
+```
+helm repo add percona https://percona.github.io/percona-helm-charts/
+```
 
 ```
 helm install pmm -n demo \

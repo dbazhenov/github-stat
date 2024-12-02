@@ -15,7 +15,7 @@ services:
       retries: 5
 
   demo_app_dataset:
-    image: dbazhenov/demo_app_dataset:0.1.1
+    image: dbazhenov/demo_app_dataset:0.1.2
     depends_on:
       valkey:
         condition: service_healthy
@@ -23,7 +23,7 @@ services:
       - .env
 
   demo_app_web:
-    image: dbazhenov/demo_app_web:0.1.1
+    image: dbazhenov/demo_app_web:0.1.2
     depends_on:
       valkey:
         condition: service_healthy
@@ -33,7 +33,7 @@ services:
       - "${CONTROL_PANEL_PORT}:${CONTROL_PANEL_PORT}"
 
   demo_app_load:
-    image: dbazhenov/demo_app_load:0.1.1
+    image: dbazhenov/demo_app_load:0.1.2
     depends_on:
       valkey:
         condition: service_healthy
@@ -83,6 +83,72 @@ services:
     command: >
       --performance-schema --innodb_monitor_enable=all
       --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
+
+  pmm-server:
+      image: percona/pmm-server:2
+      platform: "linux/amd64"
+      container_name: pmm-server
+      restart: always
+      ports:
+        - 8081:80
+        - 443:443
+      volumes:
+        - pmm-data:/srv
+      environment:
+        - DISABLE_TELEMETRY=0
+
+  pmm-client-postgres:
+    image: percona/pmm-client:2
+    platform: "linux/amd64"
+    container_name: pmm-client-postgres
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: admin
+      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor"
+
+  pmm-client-mysql:
+    image: percona/pmm-client:2
+    platform: "linux/amd64"
+    container_name: pmm-client-mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+      pmm-server:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: admin
+      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306"
+
+  pmm-client-mongodb:
+    image: percona/pmm-client:2
+    platform: "linux/amd64"
+    container_name: pmm-client-mongodb
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: admin
+      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=databaseAdmin --password=password --host=mongodb --port=27017 --query-source=profiler"
 
 volumes:
   mongodata:
