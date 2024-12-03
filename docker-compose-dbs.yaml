@@ -1,15 +1,6 @@
 version: '3.7'
 services:
 
-  valkey:
-    image: valkey/valkey:8
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-    ports:
-      - "6379:6379"
-    volumes:
-      - valkey_data:/data
-
   postgres:
     image: "percona/percona-distribution-postgresql:16.2-multi"
     environment:
@@ -136,5 +127,4 @@ volumes:
   mongodata:
   pgdata:
   mysqldata:
-  valkey_data:
   pmm-data:

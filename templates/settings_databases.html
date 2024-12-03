@@ -40,7 +40,7 @@
         <label class="form-check-label" for="loadSwitch-{{ .id }}">Enable Load</label>
       </div>
       <hr>
-      <button type="button" class="btn btn-primary" onclick="updateDatabase('{{ .id }}')">Update connection</button>
+      <button type="button" class="btn btn-primary" id="updateButton-{{ .id }}" onclick="updateDatabase('{{ .id }}')">Update connection</button>
       <button type="button" class="btn btn-danger" onclick="deleteDatabase('{{ .id }}')">Delete connection</button>
       
       {{ if ne .dbType "mongodb" }}
@@ -69,17 +69,25 @@
         {{ end }}
         <div id="datasetStatus-{{ .id }}" class="dataset-status mt-2">Dataset Status: {{ .datasetStatus }}</div>
       {{ else }}
+        {{ if ne .dbType "mongodb" }}
+        {{ if eq .schemaStatus "true" }}
         <button type="button" class="btn btn-info" id="importDataset-{{ .id }}" onclick="importDataset('{{ .id }}')">Import Dataset</button>
+        {{ end }}
+        {{ else }}
+        <button type="button" class="btn btn-info" id="importDataset-{{ .id }}" onclick="importDataset('{{ .id }}')">Import Dataset</button>
+        {{ end }}
         <div id="datasetStatus-{{ .id }}" class="dataset-status mt-2" style="display: none;"></div>
       {{ end }}
       
-      <div id="connectionStatus-{{ .id }}" class="status-message mt-2">Connection status: {{ .connectionStatus }}</div>
+      <div class="status-wrapper" style="position: relative;">
+        <div id="connectionStatus-{{ .id }}" class="status-message mt-2">Connection status: {{ .connectionStatus }}</div>
 
-      {{ if .updateStatus }}
-        <div id="updateStatus-{{ .id }}" class="update-status mt-2">{{ .updateStatus }}</div>
-      {{ else }}
-        <div id="updateStatus-{{ .id }}" class="update-status mt-2" style="display: none;"></div>
-      {{ end }}
+        {{ if .updateStatus }}
+          <div id="updateStatus-{{ .id }}" class="update-status mt-2">{{ .updateStatus }}</div>
+        {{ else }}
+          <div id="updateStatus-{{ .id }}" class="update-status mt-2" style="display: none;"></div>
+        {{ end }}
+      </div>
     </form>
   </div>
   {{ else }}

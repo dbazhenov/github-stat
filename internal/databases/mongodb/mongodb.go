@@ -25,6 +25,36 @@ func ConnectByString(connection_string string, ctx context.Context) (*mongo.Clie
 	return mongodb, nil
 }
 
+func InitProfileOptions(connectionString string, database string) error {
+
+	ctx := context.Background()
+	mongo, err := ConnectByString(connectionString, ctx)
+	if err != nil {
+		log.Printf("Error: MongoDB: Connect: %v", err)
+		return err
+	}
+	defer mongo.Disconnect(ctx)
+
+	db := mongo.Database(database)
+
+	profileCommand := bson.D{
+		{Key: "profile", Value: 2},
+		{Key: "slowms", Value: 200},
+		{Key: "ratelimit", Value: 100},
+	}
+
+	var result bson.M
+	err = db.RunCommand(ctx, profileCommand).Decode(&result)
+	if err != nil {
+		log.Printf("Error: MongoDB: RunCommand: %v", err)
+		return err
+	} else {
+		log.Printf("Profile options for PMM set successfully: %v", result)
+	}
+
+	return nil
+}
+
 // CheckMongoDB checks the connection to the MongoDB server using the provided connection string.
 // It returns "Connected" if the connection is successful, otherwise it returns the error message.
 //
@@ -34,24 +64,23 @@ func ConnectByString(connection_string string, ctx context.Context) (*mongo.Clie
 // Returns:
 //   - string: "Connected" if successful, otherwise the error message.
 func CheckMongoDB(connectionString string) string {
-	// Set a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	connectCtx, connectCancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer connectCancel()
 
 	// Use the ConnectByString function to connect to MongoDB
-	client, err := ConnectByString(connectionString, ctx)
+	client, err := ConnectByString(connectionString, connectCtx)
 	if err != nil {
 		log.Printf("Error connecting to MongoDB: %v", err)
 		return fmt.Sprintf("Error connecting to MongoDB: %v", err)
 	}
-	defer func() {
-		if disconnectErr := client.Disconnect(ctx); disconnectErr != nil {
-			log.Printf("Error disconnecting from MongoDB: %v", disconnectErr)
-		}
-	}()
+	// Disconnect immediately after connecting
+	defer client.Disconnect(context.Background())
+
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer pingCancel()
 
 	// Ping the MongoDB server
-	err = client.Ping(ctx, nil)
+	err = client.Ping(pingCtx, nil)
 	if err != nil {
 		log.Printf("Error pinging MongoDB: %v", err)
 		return fmt.Sprintf("Error pinging MongoDB: %v", err)

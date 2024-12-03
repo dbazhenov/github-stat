@@ -47,11 +47,21 @@ git clone git@github.com:dbazhenov/github-stat.git
 docker compose up -d
 ```
 
-docker-compose launches three databases (MySQL, Postgres, MongoDB) and the Demo application.
-
 4. Launch the application at `localhost:3000` in your browser.
 
-5. Open the Settings tab and create connections to the databases you want to load. Connection options are available in docker-compose.yaml
+5. Open the Settings tab and create connections to the databases you want to load. 
+
+You can use any of your databases, such as those running with Percona Everest or Docker. 
+
+If you don't have databases, start them using the command:
+
+```
+docker compose -f docker-compose-dbs.yaml up -d
+```
+
+docker-compose launches three databases (MySQL, Postgres, MongoDB) and PMM with pmm-client.
+
+Connection options are available in docker-compose-dbs.yaml
 
     - MySQL: `root:password@tcp(mysql:3306)/dataset`
 

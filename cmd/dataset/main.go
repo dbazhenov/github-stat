@@ -575,8 +575,8 @@ func updateDatasetData() {
 	for {
 		log.Printf("updateDatasetData: Start import: Type %v", app.Config.App.DatasetLoadType)
 
-		if statusData == "Waiting" {
-			setStatus("Running")
+		if statusData == "Active" {
+			setStatus("Updating")
 		}
 
 		// The main process of getting data from GitHub API and storing it into memory.
@@ -589,7 +589,7 @@ func updateDatasetData() {
 		// Log current memory usage
 		logMemoryUsage("updateDatasetData")
 
-		setStatus("Waiting")
+		setStatus("Active")
 		// Delay before the next start (Defined by the DELAY_MINUTES parameter)
 		helperSleep(app.Config)
 		app.InitConfig("dataset")
@@ -658,12 +658,12 @@ func importGitHubToMemory(envVars app.EnvVars) {
 			}
 
 			if statusData == "Initializing" && len(allReposData) > 20 {
-				setStatus("Running")
+				setStatus("Updating")
 			}
 
 			// Simple update of the amount of data in memory for the control panel.
-			if statusData == "Running" && len(allReposData) > 30 {
-				setStatus("Running")
+			if statusData == "Active" && len(allReposData) > 30 {
+				setStatus("Updating")
 			}
 		}
 
@@ -723,7 +723,7 @@ func importCSVToMemory(envVars app.EnvVars) error {
 	}
 
 	if statusData == "Initializing" {
-		setStatus("Running")
+		setStatus("Updating")
 	}
 
 	report.Timer["allRepos"] = time.Now().UnixMilli()

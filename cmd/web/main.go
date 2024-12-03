@@ -670,6 +670,18 @@ func updateDatabase(w http.ResponseWriter, r *http.Request) {
 
 		currentDB["connectionStatus"] = mongodb.CheckMongoDB(connectionString)
 
+		log.Printf("MongoDB Status: %s", currentDB["connectionStatus"])
+
+		if currentDB["connectionStatus"] != "Connected" {
+			currentDB["datasetStatus"] = ""
+		} else {
+			if delete_schema == "" {
+				err := mongodb.InitProfileOptions(connectionString, database)
+				if err != nil {
+					log.Printf("Error: MongoDB: %s: InitProfileOptions: %v", id, err)
+				}
+			}
+		}
 	}
 
 	log.Printf("Update: ID: %s, Fields: %v", id, currentDB)

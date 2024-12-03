@@ -104,26 +104,6 @@
         });
     }
 
-    function updateDatabase(id) {
-        const form = $(`#formDatabases-${id}`);
-        const data = form.serialize();
-
-        $.ajax({
-            type: 'POST',
-            url: `/update_db/${id}`,
-            data: data,
-            success: function(response) {
-                loadDatabaseList();
-                showNotification(`Update successful for ID: ${id}`, 'success');
-            },
-            error: function(xhr, status, error) {
-                alert('Error: ' + error);
-                $(`#connectionStatus-${id}`).text("Update failed");
-                showNotification(`Update failed for ID: ${id} - Error: ${error}`, 'danger');
-            }
-        });
-    }
-
     function deleteDatabase(id) {
         if (confirm(`Are you sure you want to delete ${id} database?`)) {
             $.ajax({
@@ -139,6 +119,40 @@
                 }
             });
         }
+    }
+    function updateDatabase(id) {
+        const form = $(`#formDatabases-${id}`);
+        const data = form.serialize();
+
+        // const updateButton = $(`#updateButton-${id}`);
+        // updateButton.prop('disabled', true);
+
+        const connectionStatus = $(`#connectionStatus-${id}`);
+        const loaderTimeout = setTimeout(() => {
+            connectionStatus.html(`
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span>Updating connection, please wait... The response is taking longer than usual, please hold on. The connection string might be incorrect.</span>
+                </div>
+            `);
+        }, 1500);
+
+        $.ajax({
+            type: 'POST',
+            url: `/update_db/${id}`,
+            data: data,
+            success: function(response) {
+                loadDatabaseList();
+                showNotification(`Update successful for ID: ${id}`, 'success');
+            },
+            error: function(xhr, status, error) {
+                alert('Error: ' + error);
+                connectionStatus.text("Update failed");
+                showNotification(`Update failed for ID: ${id} - Error: ${error}`, 'danger');
+            }
+        });
     }
 
     function showNotification(message, type) {
@@ -161,7 +175,7 @@
         dbTypeSelect.addEventListener('change', function() {
         if (dbTypeSelect.value === 'mongodb') {
             mongodbDatabaseField.style.display = 'block';
-            connectionStringInput.value = 'mongodb://databaseAdmin:password@postgres:27017/';
+            connectionStringInput.value = 'mongodb://databaseAdmin:password@mongodb:27017/';
         } else if (dbTypeSelect.value === 'mysql') {
             mongodbDatabaseField.style.display = 'none';
             connectionStringInput.value = 'root:password@tcp(mysql:3306)/demo';
