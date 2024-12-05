@@ -15,7 +15,7 @@ services:
       retries: 5
 
   demo_app_dataset:
-    image: dbazhenov/demo_app_dataset:0.1.3
+    image: dbazhenov/demo_app_dataset:0.1.4
     depends_on:
       valkey:
         condition: service_healthy
@@ -25,7 +25,7 @@ services:
       - VALKEY_ADDR=valkey
 
   demo_app_web:
-    image: dbazhenov/demo_app_web:0.1.3
+    image: dbazhenov/demo_app_web:0.1.4
     depends_on:
       valkey:
         condition: service_healthy
@@ -37,7 +37,7 @@ services:
       - "${CONTROL_PANEL_PORT}:${CONTROL_PANEL_PORT}"
 
   demo_app_load:
-    image: dbazhenov/demo_app_load:0.1.3
+    image: dbazhenov/demo_app_load:0.1.4
     depends_on:
       valkey:
         condition: service_healthy

@@ -161,9 +161,11 @@ func manageLoad(dbConfig map[string]string, ctx context.Context) {
 
 	routines := make(map[int]context.CancelFunc)
 
-	checkOrWaitDB(id, dbType)
-
-	db := getDatabaseByID(id, dbType)
+	db := checkOrWaitDB(id, dbType)
+	if db == nil {
+		log.Printf("Start: manageLoad: %s: %s: Database no longer exists", dbType, id)
+		return
+	}
 
 	var wg sync.WaitGroup
 	currentConnections, err := strconv.Atoi(db["connections"])
@@ -211,8 +213,11 @@ func manageLoad(dbConfig map[string]string, ctx context.Context) {
 			}
 
 			// Check DB connection status
-			if !checkConnection(db) {
-				log.Printf("%s: %s: Detected disconnect, restarting routines.", dbType, id)
+			checkStatus := checkConnection(db)
+
+			if checkStatus != "Connected" {
+
+				log.Printf("%s: %s: Detected disconnect, restarting routines. Connection status: %s", dbType, id, checkStatus)
 
 				// Cancel all running goroutines
 				for _, cancel := range routines {
@@ -225,11 +230,10 @@ func manageLoad(dbConfig map[string]string, ctx context.Context) {
 				// Clear routines map
 				routines = make(map[int]context.CancelFunc)
 
+				log.Printf("%s: %s: checkOrWaitDB: Start", dbType, id)
 				// Reconnect and restart goroutines
-				checkOrWaitDB(id, dbType)
-
-				db = getDatabaseByID(id, dbType)
-
+				db := checkOrWaitDB(id, dbType)
+				log.Printf("%s: %s: checkOrWaitDB: Finish", dbType, id)
 				if db == nil {
 					log.Printf("%s: %s: Database no longer exists after reconnection, stopping all routines", dbType, id)
 					return
@@ -343,29 +347,33 @@ func runMySQL(ctx context.Context, routineId int, dbConfig map[string]string) {
 		default:
 			// Update localDBConfig every 2 seconds
 			if time.Since(lastUpdate) > 2*time.Second {
-				localDBConfig := getDatabaseByID(localDBConfig["id"], "mysql")
+				localDBConfig = getDatabaseByID(localDBConfig["id"], "mysql")
 				if localDBConfig == nil {
 					log.Printf("MySQL: %s: goroutine: %d: database has been removed, stopping goroutine", dbConfig["id"], routineId)
 					return
 				}
-
+				// log.Printf("MySQL: %s: goroutine: %d: Config: %s, %s, %s, %s", dbConfig["id"], routineId, localDBConfig["switch1"], localDBConfig["switch2"], localDBConfig["switch3"], localDBConfig["switch4"])
 				lastUpdate = time.Now()
 			}
 
 			// Use localDBConfig for other operations
 			if localDBConfig["switch1"] == "true" {
+
 				load.MySQLSwitch1(db, routineId, localDBConfig)
 			}
 
 			if localDBConfig["switch2"] == "true" {
+
 				load.MySQLSwitch2(db, routineId, localDBConfig)
 			}
 
 			if localDBConfig["switch3"] == "true" {
+
 				load.MySQLSwitch3(db, routineId, localDBConfig)
 			}
 
 			if localDBConfig["switch4"] == "true" {
+
 				load.MySQLSwitch4(db, routineId, localDBConfig)
 			}
 
@@ -632,18 +640,29 @@ func getLoadDatabases() error {
 	return nil
 }
 
-func checkOrWaitDB(id string, dbType string) {
+func checkOrWaitDB(id string, dbType string) map[string]string {
+
 	for {
 		db := getDatabaseByID(id, dbType)
 
-		if checkConnection(db) {
-			log.Printf("checkOrWaitDB: %s: %s: %s", dbType, id, db["connectionStatus"])
-			break
+		if db == nil {
+			log.Printf("checkOrWaitDB: %s: %s: Database no longer exists after reconnection, stopping all routines", dbType, id)
+			return nil
 		}
 
-		log.Printf("Wait DB Connect: %s: Connection failed: %s", dbType, db["connectionStatus"])
+		checkStatus := checkConnection(db)
+
+		if checkStatus == "Connected" {
+			db["connectionStatus"] = checkStatus
+			log.Printf("checkOrWaitDB: %s: %s: Status: Connected", dbType, id)
+			return db
+		}
+
+		log.Printf("checkOrWaitDB: %s: %s: Connection failed: %s", dbType, id, checkStatus)
+
 		time.Sleep(5 * time.Second)
 	}
+
 }
 
 // getDatabaseByID retrieves the database configuration by its ID.
@@ -672,7 +691,7 @@ func getDatabaseByID(id string, dbType string) map[string]string {
 	return nil
 }
 
-func checkConnection(db map[string]string) bool {
+func checkConnection(db map[string]string) string {
 	connectionString := db["connectionString"]
 	dbType := db["dbType"]
 
@@ -688,7 +707,7 @@ func checkConnection(db map[string]string) bool {
 
 	// updateConnectionStatus(dbType, db["id"], result)
 
-	return result == "Connected"
+	return result
 }
 
 // // updateConnectionStatus updates the connection status of a specific database.

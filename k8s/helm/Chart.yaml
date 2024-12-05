@@ -2,8 +2,8 @@ apiVersion: v2
 name: demo-app
 description: Control panel and database load.
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.4
+appVersion: "0.1.4"
 maintainers:
   - name: daniil.bazhenov
     email: daniil.bazhenov@percona.com

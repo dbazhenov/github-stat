@@ -23,13 +23,13 @@ spec:
             name: {{ .Values.name }}-secret
         env:
         - name: DATASET_LOAD_TYPE
-          value: {{ .Values.datasetLoadType }}
+          value: "{{ .Values.datasetLoadType }}"
         - name: DATASET_DEMO_CSV_PULLS
-          value: {{ .Values.datasetDemoPullsCSV }}
+          value: "{{ .Values.datasetDemoPullsCSV }}"
         - name: DATASET_DEMO_CSV_REPOS
-          value: {{ .Values.datasetDemoReposCSV }}
+          value: "{{ .Values.datasetDemoReposCSV }}"
         - name: DELAY_MINUTES
-          value: {{ .Values.delayMinutes }} 
+          value: "{{ .Values.delayMinutes }}"
         {{- if $.Values.useResourceLimits }}
         resources:
           requests:

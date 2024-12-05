@@ -149,20 +149,12 @@ Next, you can run the Demo application, either manually or with Helm.
 
 ### Running Demo application using HELM
 
-1. Set the HELM parameters in the ./k8s/demo-app/values.yaml file:
-
-`githubToken` -  is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
-
-`separateLoads` - If true, separate pods for each database will be started for the load.
-
-`useResourceLimits` - if true, resource limits will be set for the resource consumption
-
-`controlPanelService.type` - LoadBalancer for the public address of the dashboard. NodePort for developing locally.
+1. Set the HELM parameters in the ./k8s/helm/values.yaml file:
 
 2. Launch the application
 
 ```
-helm install demo-app ./k8s/demo-app -n demo
+helm install demo-app ./k8s/helm -n demo
 ```
 
 3. Run `kubectl -n demo get svc` to get the public IP for demo-app-web-service. Launch the control panel in your browser.
@@ -178,15 +170,25 @@ kubectl -n demo delete pod [DATASET_POD]
 6. You can change the allocated resources or the number of replicas by editing the `values.yaml` file and issuing the command 
 
 ```
-helm upgrade demo-app ./k8s/demo-app -n demo
+helm upgrade demo-app ./k8s/helm -n demo
 ```
+
+Demo App HELM parameters (./k8s/helm/values.yaml): 
+
+-   `githubToken` -  is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
+
+-   `separateLoads` - If true, separate pods for each database will be started for the load.
+
+-   `useResourceLimits` - if true, resource limits will be set for the resource consumption
+
+-   `controlPanelService.type` - LoadBalancer for the public address of the dashboard. NodePort for developing locally.
 
 ### Running Demo application manually
 
 1. Create Secrets and ConfigMap for the application.
 
 ```
-kubectl apply -f k8s/config.yaml -n demo
+kubectl apply -f k8s/manual/config.yaml -n demo
 ```
 
 Check the k8s/config.yaml file. Be sure to set `GITHUB_TOKEN`, which is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
@@ -194,13 +196,13 @@ Check the k8s/config.yaml file. Be sure to set `GITHUB_TOKEN`, which is required
 2. Run Valkey database
 
 ```
-kubectl apply -f k8s/valkey.yaml -n demo
+kubectl apply -f k8s/manual/valkey.yaml -n demo
 ```
 
 3. Run the Control Panel script
 
 ```
-kubectl apply -f k8s/web-deployment.yaml -n demo
+kubectl apply -f k8s/manual/web-deployment.yaml -n demo
 ```
 
 Run `kubectl -n demo get svc` to get the public IP. Launch the control panel in your browser.
@@ -212,7 +214,7 @@ The first time you connect to MySQL and Postgres, you will need to create a sche
 4. Run the Dataset loader script
 
 ```
-kubectl apply -f k8s/dataset-deployment.yaml -n demo
+kubectl apply -f k8s/manual/dataset-deployment.yaml -n demo
 ```
 
 5. Run the Load Generator script.
@@ -220,14 +222,14 @@ kubectl apply -f k8s/dataset-deployment.yaml -n demo
 If one script for all databases. 
 
 ```
-kubectl apply -f k8s/load-deployment.yaml -n demo
+kubectl apply -f k8s/manual/load-deployment.yaml -n demo
 ```
 
 You can run a separate load generator for each database. To distribute resources or scale the load.
 
-- MySQL: `kubectl apply -f k8s/load-mysql-deployment.yaml -n demo`
-- Postgres: `kubectl apply -f k8s/load-postgres-deployment.yaml -n demo`
-- MongoDB `kubectl apply -f k8s/load-mongodb-deployment.yaml -n demo`
+- MySQL: `kubectl apply -f k8s/manual/load-mysql-deployment.yaml -n demo`
+- Postgres: `kubectl apply -f k8s/manual/load-postgres-deployment.yaml -n demo`
+- MongoDB `kubectl apply -f k8s/manual/load-mongodb-deployment.yaml -n demo`
 
 You can set the environment variable to determine which database the script will load.
 

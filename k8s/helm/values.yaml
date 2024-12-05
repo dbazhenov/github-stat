@@ -5,7 +5,7 @@ debug: "false"
 # Options for datasetLoadType:
 # - csv: Load data from CSV files.
 # - github: Get data from the GitHub API and write to the database in portions for each repository.
-datasetLoadType: "github" # Options: csv, github
+datasetLoadType: "csv" # Options: csv, github
 
 # Delay between data imports and updates, in minutes. Useful if the number of requests to the GitHub API is limited.
 delayMinutes: "10"
@@ -28,15 +28,15 @@ images:
   web:
     repository: dbazhenov/demo_app_web
     pullPolicy: Always
-    tag: latest
+    tag: "0.1.4"
   dataset:
     repository: dbazhenov/demo_app_dataset
     pullPolicy: Always
-    tag: latest
+    tag: "0.1.4"
   load:
     repository: dbazhenov/demo_app_load
     pullPolicy: Always
-    tag: latest
+    tag: "0.1.4"
   valkey:
     repository: valkey/valkey
     pullPolicy: Always
@@ -44,7 +44,7 @@ images:
 
 controlPanelService:
   type: LoadBalancer  # LoadBalancer or NodePort 
-  nodePort: 30001
+  nodePort: 3001
   port: 80
   targetPort: 3001 # controlPanelPort - CONTROL_PANEL_PORT
 
@@ -60,11 +60,11 @@ resources:
       cpu: "600m"
   dataset:
     requests:
-      memory: "4Gi"
-      cpu: "3"
+      memory: "6Gi"
+      cpu: "1"
     limits:
-      memory: "4Gi"
-      cpu: "3"
+      memory: "6Gi"
+      cpu: "1"
   load:
     requests:
       memory: "2Gi"
@@ -74,10 +74,10 @@ resources:
       cpu: "3"
   valkey:
     requests:
-      memory: "1Gi"
+      memory: "2Gi"
       cpu: "1"
     limits:
-      memory: "1Gi"
+      memory: "2Gi"
       cpu: "1"
 
 # Configurations for different instances

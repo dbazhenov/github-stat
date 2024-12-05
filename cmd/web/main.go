@@ -409,7 +409,7 @@ func createDatabase(w http.ResponseWriter, r *http.Request) {
 			"connectionString": connectionString,
 			"loadSwitch":       "false",
 			"position":         "0",
-			"sleep":            "0",
+			"sleep":            "100",
 			"connections":      "0",
 			"switch1":          "false",
 			"switch2":          "false",
