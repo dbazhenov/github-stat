@@ -16,13 +16,24 @@ import (
 func ConnectByString(connection_string string, ctx context.Context) (*mongo.Client, error) {
 
 	clientOptions := options.Client().ApplyURI(connection_string)
-	mongodb, err := mongo.Connect(ctx, clientOptions)
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		log.Printf("MongoDB Error: %s", err)
+		// log.Printf("MongoDB Connect: Client Error: %s", err)
 		return nil, err
 	}
 
-	return mongodb, nil
+	// Ping the primary to verify connection establishment
+	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		// log.Printf("MongoDB Connect: Ping Error: %s", err)
+		return nil, err
+	}
+
+	return client, nil
+
 }
 
 func InitProfileOptions(connectionString string, database string) error {
@@ -70,21 +81,10 @@ func CheckMongoDB(connectionString string) string {
 	// Use the ConnectByString function to connect to MongoDB
 	client, err := ConnectByString(connectionString, connectCtx)
 	if err != nil {
-		log.Printf("Error connecting to MongoDB: %v", err)
 		return fmt.Sprintf("Error connecting to MongoDB: %v", err)
 	}
 	// Disconnect immediately after connecting
 	defer client.Disconnect(context.Background())
-
-	pingCtx, pingCancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
-	defer pingCancel()
-
-	// Ping the MongoDB server
-	err = client.Ping(pingCtx, nil)
-	if err != nil {
-		log.Printf("Error pinging MongoDB: %v", err)
-		return fmt.Sprintf("Error pinging MongoDB: %v", err)
-	}
 
 	return "Connected"
 }

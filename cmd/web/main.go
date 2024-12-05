@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	app "github-stat/internal"
 	"github-stat/internal/databases/mongodb"
@@ -353,11 +354,15 @@ func getMongoDBData(db map[string]string) (app.DatasetInfo, error) {
 	connectionString := db["connectionString"]
 	dbName := db["database"] // Use the database field from db map
 
-	mongo_ctx := context.Background()
+	mongo_ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
 	mongo, err := mongodb.ConnectByString(connectionString, mongo_ctx)
 	if err != nil {
 		log.Printf("Error: Dataset: MongoDB: Connect: %s", err)
-		return app.DatasetInfo{}, err
+		return app.DatasetInfo{
+			DBName: dbName,
+		}, nil
 	}
 	defer mongo.Disconnect(mongo_ctx)
 

@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: demo-app-load-mongodb
-        image: dbazhenov/demo_app_load:latest
+        image: dbazhenov/demo_app_load:0.1.5
         imagePullPolicy: Always
         resources:
           requests:
