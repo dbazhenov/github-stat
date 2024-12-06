@@ -248,6 +248,7 @@
         const percentage = (rangeInput.value - rangeInput.min) / (rangeInput.max - rangeInput.min) * 100;
         valueSpan.textContent = val;
         valueSpan.style.left = `calc(${val}% + (${8 - val * 0.15}px))`
+        rangeInput.style.background = `linear-gradient(to right, #0c0 ${val}%, #ccc ${val}%)`;
     }
     
     function loadControlPanel() {
