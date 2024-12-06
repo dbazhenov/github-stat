@@ -118,7 +118,8 @@ body {
   appearance: none;
   background: transparent;
   cursor: pointer;
-  width: 15rem;
+  border-radius: 15px;
+  height: 8px;
 }
 
 [data-bs-theme="dark"] input[type="range"]:focus {
@@ -126,8 +127,6 @@ body {
 }
 
 [data-bs-theme="dark"] input[type="range"]::-webkit-slider-runnable-track {
-  background-color: #0c0;
-  border-radius: 4px;
   height: 8px;  
 }
 
@@ -148,8 +147,6 @@ body {
 }
 
 [data-bs-theme="dark"] input[type="range"]::-moz-range-track {
-  background-color: #0c0;
-  border-radius: 4px;
   height: 8px;
 }
 
