@@ -9,8 +9,8 @@
         <div class="form-group mt-3">
           <label for="connectionsRange-{{ .id }}">Parallel connections to the database</label>
           <div class="range-container mb-3 mt-1" style="position: relative; width: 100%;">
-            <input type="range" class="form-control-range w-100" id="connectionsRange-{{ .id }}" name="connections" min="0" max="100" value="{{ .connections }}" oninput="updateValuePosition(this.value, 'connectionsRange-{{ .id }}', 'rangeValue-{{ .id }}'); updateDatabaseLoad('{{ .id }}')">
-            <span class="range-value" id="rangeValue-{{ .id }}">{{ .connections }}</span>
+            <input type="range" class="form-control-range range w-100" id="connectionsRange-{{ .id }}" name="connections" min="0" max="100" value="{{ .connections }}" oninput="updateValuePosition(this.value, 'connectionsRange-{{ .id }}', 'rangeValue-{{ .id }}'); updateDatabaseLoad('{{ .id }}')">
+            <output class="range-bubble" id="rangeValue-{{ .id }}">{{ .connections }}</output>
           </div>
         </div>
         <div class="row">
