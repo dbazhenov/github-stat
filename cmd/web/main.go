@@ -56,6 +56,8 @@ func handleRequest() {
 	http.HandleFunc("/load_db", loadDatabase)
 	http.HandleFunc("/manage-dataset/", manageDataset)
 
+	http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
+
 	port := app.Config.ControlPanel.Port
 	if port == "" {
 		port = "8080" // standard port, if not specified

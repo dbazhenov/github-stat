@@ -247,9 +247,7 @@
         const rangeInput = document.getElementById(rangeId);
         const percentage = (rangeInput.value - rangeInput.min) / (rangeInput.max - rangeInput.min) * 100;
         valueSpan.textContent = val;
-        requestAnimationFrame(() => {
-            valueSpan.style.left = `calc(${percentage}% - ${percentage / 100 * 16}px)`;
-        });
+        valueSpan.style.left = `calc(${val}% + (${8 - val * 0.15}px))`
     }
     
     function loadControlPanel() {
@@ -272,7 +270,7 @@
         // Initialize range values
         document.querySelectorAll('.database-form').forEach(form => {
             const rangeInput = form.querySelector('input[type="range"]');
-            const valueSpan = form.querySelector('.range-value');
+            const valueSpan = form.querySelector('.range-bubble');
             if (rangeInput && valueSpan) {
                 updateValuePosition(rangeInput.value, rangeInput.id, valueSpan.id);
             }
