@@ -3,7 +3,7 @@ name: demo-app
 description: Control panel and database load.
 type: application
 version: 0.1.4
-appVersion: "0.1.5"
+appVersion: "0.1.6"
 maintainers:
   - name: daniil.bazhenov
     email: daniil.bazhenov@percona.com
