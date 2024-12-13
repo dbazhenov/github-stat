@@ -23,6 +23,14 @@ services:
       - .env
     environment:
       - VALKEY_ADDR=valkey
+      - VALKEY_PORT=6379
+      - DATASET_LOAD_TYPE=csv # github or csv
+      - GITHUB_ORG=percona
+      - GITHUB_TOKEN=
+      - DATASET_DEMO_CSV_PULLS="data/csv/pulls.csv" # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/pulls.csv.zip
+      - DATASET_DEMO_CSV_REPOS="data/csv/repositories.csv" # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/repositories.csv.zip
+      - DELAY_MINUTES=10
+      - DEBUG=false
 
   demo_app_web:
     image: dbazhenov/demo_app_web:0.1.6
@@ -33,8 +41,10 @@ services:
       - .env
     environment:
       - VALKEY_ADDR=valkey 
+      - VALKEY_PORT=6379
+      - CONTROL_PANEL_PORT=3000
     ports:
-      - "${CONTROL_PANEL_PORT}:${CONTROL_PANEL_PORT}"
+      - "3000:3000"
 
   demo_app_load:
     image: dbazhenov/demo_app_load:0.1.6
@@ -45,7 +55,10 @@ services:
       - .env
     environment:
       - VALKEY_ADDR=valkey
+      - VALKEY_PORT=6379
+      - LOAD_MYSQL=true
+      - LOAD_POSTGRES=true
+      - LOAD_MONGODB=true
 
 volumes:
   valkey_data:
-  pmm-data:

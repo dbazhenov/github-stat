@@ -124,7 +124,7 @@ services:
       PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=databaseAdmin --password=password --host=mongodb --port=27017 --query-source=profiler"
 
 volumes:
+  pmm-data:
   mongodata:
   pgdata:
   mysqldata:
-  pmm-data:
