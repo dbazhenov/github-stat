@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -53,23 +54,38 @@ func GetEnvVars(appType string) (EnvVars, error) {
 
 	var envVars EnvVars
 
-	err := godotenv.Overload()
-	if err != nil {
-		log.Println("Warning: Error loading .env file, continuing with existing environment variables")
+	_ = godotenv.Overload()
+	// if err != nil {
+	// 	log.Println("Warning: Error loading .env file, continuing with existing environment variables")
+	// }
+
+	// Ensure required environment variables are set
+	envVars.Valkey.Addr = os.Getenv("VALKEY_ADDR")
+	if envVars.Valkey.Addr == "" {
+		return envVars, fmt.Errorf("required environment variable VALKEY_ADDR is not set")
 	}
 
-	envVars.Valkey.Addr = os.Getenv("VALKEY_ADDR")
 	envVars.Valkey.Port = os.Getenv("VALKEY_PORT")
+	if envVars.Valkey.Port == "" {
+		return envVars, fmt.Errorf("required environment variable VALKEY_PORT is not set")
+	}
+
+	// Optional environment variables
 	envVars.Valkey.Password = os.Getenv("VALKEY_PASSWORD")
 	envVars.Valkey.DB, _ = parseInt("VALKEY_DB")
 
 	if appType == "dataset" {
-		envVars.GitHub.Organisation = os.Getenv("GITHUB_ORG")
-		envVars.GitHub.Token = os.Getenv("GITHUB_TOKEN")
-		if envVars.GitHub.Token == "" {
-			log.Println("Configuration: GitHub Token is not set. The script will run in limited mode, only repositories will be fetched. Add Github Token to receive Pull Requests data.")
-		}
 		envVars.App.DatasetLoadType = os.Getenv("DATASET_LOAD_TYPE")
+
+		if envVars.App.DatasetLoadType == "github" {
+			envVars.GitHub.Organisation = os.Getenv("GITHUB_ORG")
+			if envVars.GitHub.Organisation == "" {
+				return envVars, fmt.Errorf("required environment variable GITHUB_ORG is not set")
+			}
+		}
+
+		envVars.GitHub.Token = os.Getenv("GITHUB_TOKEN")
+
 		envVars.App.DatasetDemoRepos = os.Getenv("DATASET_DEMO_CSV_REPOS")
 		envVars.App.DatasetDemoPulls = os.Getenv("DATASET_DEMO_CSV_PULLS")
 		envVars.App.DelayMinutes, _ = parseInt("DELAY_MINUTES")
@@ -84,6 +100,9 @@ func GetEnvVars(appType string) (EnvVars, error) {
 
 	if appType == "web" {
 		envVars.ControlPanel.Port = os.Getenv("CONTROL_PANEL_PORT")
+		if envVars.ControlPanel.Port == "" {
+			return envVars, fmt.Errorf("required environment variable CONTROL_PANEL_PORT is not set")
+		}
 	}
 
 	return envVars, nil
@@ -94,7 +113,7 @@ func InitConfig(appType string) {
 
 	envVars, err := GetEnvVars(appType)
 	if err != nil {
-		log.Printf("App: %s: Error GetEnvVars: %v", appType, err)
+		log.Fatalf("App: %s: Error GetEnvVars: %v", appType, err)
 	}
 
 	Config = envVars
@@ -116,7 +135,6 @@ func parseInt(key string) (int, error) {
 	result_string := os.Getenv(key)
 	result, err := strconv.Atoi(result_string)
 	if err != nil {
-		log.Printf("Error converting %s to int: %v", key, err)
 		return 0, err
 	}
 
@@ -128,7 +146,6 @@ func parseBool(key string) (bool, error) {
 	result_string := os.Getenv(key)
 	result, err := strconv.ParseBool(result_string)
 	if err != nil {
-		log.Printf("Error converting %s to int: %v", key, err)
 		return false, err
 	}
 

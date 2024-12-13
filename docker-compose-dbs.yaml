@@ -53,22 +53,17 @@ services:
       --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
 
   pmm-server:
-      image: percona/pmm-server:2
-      platform: "linux/amd64"
-      container_name: pmm-server
-      restart: always
-      ports:
-        - 8081:80
-        - 443:443
-      volumes:
-        - pmm-data:/srv
-      environment:
-        - DISABLE_TELEMETRY=0
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost"]
-        interval: 30s
-        timeout: 10s
-        retries: 5
+    image: percona/pmm-server:2
+    platform: "linux/amd64"
+    container_name: pmm-server
+    restart: always
+    ports:
+      - 8080:80
+      - 443:443
+    volumes:
+      - pmm-data:/srv
+    environment:
+      - DISABLE_TELEMETRY=0
 
   pmm-client-postgres:
     image: percona/pmm-client:2
@@ -124,7 +119,7 @@ services:
       PMM_AGENT_PRERUN_SCRIPT: "pmm-admin status --wait=10s; pmm-admin add mongodb --username=databaseAdmin --password=password --host=mongodb --port=27017 --query-source=profiler"
 
 volumes:
+  pmm-data:
   mongodata:
   pgdata:
   mysqldata:
-  pmm-data:

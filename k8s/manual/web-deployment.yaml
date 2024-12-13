@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: demo-app-web
-        image: dbazhenov/demo_app_web:0.1.5
+        image: dbazhenov/demo_app_web:0.1.7
         imagePullPolicy: Always
         envFrom:
         - configMapRef:
@@ -43,5 +43,5 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 3001
+      targetPort: 3000
   type: LoadBalancer
