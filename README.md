@@ -56,7 +56,7 @@ docker compose up -d
 
 4. Launch the application at `localhost:3000` in your browser.
 
-![Demo App](./assets/demo-app.png)
+![Demo App Dark Mode](./assets/demo-app.png)
 
 5. Open the Settings tab and create connections to the databases you want to load.
 
@@ -68,7 +68,7 @@ docker compose up -d
 
    > **Note:** This `docker-compose.yml` file sets up a multi-container environment with PostgreSQL, MongoDB, and MySQL databases, along with a Percona Monitoring and Management (PMM) server and its client containers for monitoring each database.
 
-   ![Demo App](./assets/docker-compose-dbs.png)
+   ![Docker Compose DBs](./assets/docker-compose-dbs.png)
 
    Connection options are available in docker-compose-dbs.yaml
 
@@ -81,6 +81,7 @@ docker compose up -d
 6. In the **Settings** tab, load the test dataset for each database by clicking `Create Schema` and `Import Dataset` buttons. A small dataset from a CSV file (26 repos and 4600 PRs) will be imported by default.
 
    > **Note:** To import the full dataset, add a GitHub Token to the .env file and change the import type to GitHub.
+   > ![Settings MySQL Example](./assets/settings-mysql-example.png)
 
 7. Turn on the `Enable Load` setting option and open the `Load Generator Control Panel` tab.
 
