@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: demo-app-load
-        image: dbazhenov/demo_app_load:0.1.5
+        image: dbazhenov/demo_app_load:0.1.7
         imagePullPolicy: Always
         resources:
           requests:

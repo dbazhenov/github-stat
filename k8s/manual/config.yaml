@@ -13,7 +13,7 @@ metadata:
   name: demo-app-config
 data:
   GITHUB_ORG: percona
-  CONTROL_PANEL_PORT: "3001"
+  CONTROL_PANEL_PORT: "3000"
   VALKEY_ADDR: valkey-service
   VALKEY_PORT: "6379"
   VALKEY_DB: "0"
