@@ -44,21 +44,21 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 git clone git@github.com:dbazhenov/github-stat.git
 ```
 
-2. Copy or rename `.env.example` (already provided in this repo) to `.env`. Set the parameters in the `.env` file.
+<!-- 2. Copy or rename `.env.example` (already provided in this repo) to `.env`. Set the parameters in the `.env` file.
 
-   > **Note:** The `.env` file contains essential configuration settings for the application. Adjust these settings based on your environment to ensure proper functionality.
+   > **Note:** The `.env` file contains essential configuration settings for the application. Adjust these settings based on your environment to ensure proper functionality. -->
 
-3. Run the environment:
+2. Run the environment:
 
 ```bash
 docker compose up -d
 ```
 
-4. Launch the application at `localhost:3000` in your browser.
+3. Launch the application at `localhost:3000` in your browser.
 
 ![Demo App Dark Mode](./assets/demo-app.png)
 
-5. Open the Settings tab and create connections to the databases you want to load.
+4. Open the Settings tab and create connections to the databases you want to load.
 
    - If you don't databases, start them using docker compose:
 
@@ -80,14 +80,14 @@ docker compose up -d
 
    PMM server will be available at `localhost:8080`, access admin / admin . At the first startup, it will offer to change the password, skip it or set the same password (admin). 
 
-6. In the **Settings** tab, load the test dataset for each database by clicking `Create Schema` and `Import Dataset` buttons. A small dataset from a CSV file (26 repos and 4600 PRs) will be imported by default.
+5. In the **Settings** tab, load the test dataset for each database by clicking `Create Schema` and `Import Dataset` buttons. A small dataset from a CSV file (26 repos and 4600 PRs) will be imported by default.
 
    > **Note:** To import a large complete dataset, add the [GitHub API token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic) to the `GITHUB_TOKEN` environment variable and set `DATASET_LOAD_TYPE=githbub` in the `docker-compose.yaml` file for the `demo_app_dataset` service. Run `docker-compose up -d` when changing environment variables.
    > ![Settings MySQL Example](./assets/settings-mysql-example.png)
 
-7. Turn on the `Enable Load` setting option and open the `Load Generator Control Panel` tab. Click Update connection to save the changes to the settings.
+6. Turn on the `Enable Load` setting option and open the `Load Generator Control Panel` tab. Click Update connection to save the changes to the settings.
 
-8. Open PMM to see the connected databases and load. `localhost:8080` (admin/admin). We recommend opening the Databases Overview dashboard in the Experimental section.
+7. Open PMM to see the connected databases and load. `localhost:8080` (admin/admin). We recommend opening the Databases Overview dashboard in the Experimental section.
 
 ## Development Environment
 
