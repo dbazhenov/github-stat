@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: demo-app-dataset
-        image: dbazhenov/demo_app_dataset:0.1.7
+        image: dbazhenov/demo_app_dataset:0.1.8
         imagePullPolicy: Always
         resources:
           requests:
