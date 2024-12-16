@@ -687,6 +687,10 @@ func updateDatabase(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					log.Printf("Error: MongoDB: %s: InitProfileOptions: %v", id, err)
 				}
+				err = mongodb.InitProfileOptions(connectionString, "admin")
+				if err != nil {
+					log.Printf("Error: MongoDB: %s: InitProfileOptions (admin): %v", id, err)
+				}
 			}
 		}
 	}

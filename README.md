@@ -40,37 +40,41 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 
 1. Clone the project repository:
 
-```bash
-git clone git@github.com:dbazhenov/github-stat.git
-```
+   ```bash
+   git clone https://github.com/dbazhenov/github-stat.git
+   ```
+
+   Open the folder with the repository `cd github-stat/`
 
 <!-- 2. Copy or rename `.env.example` (already provided in this repo) to `.env`. Set the parameters in the `.env` file.
 
    > **Note:** The `.env` file contains essential configuration settings for the application. Adjust these settings based on your environment to ensure proper functionality. -->
 
-2. Run the environment:
+2. Run the environment. Two options:
 
-```bash
-docker compose up -d
-```
+- Demo application only. Suitable for connecting to your own databases e.g. created with Percona Everest, Pecona Operators or other databases in the cloud or locally.
 
-3. Launch the application at `localhost:3000` in your browser.
+   ```bash
+   docker compose up -d
+   ```
 
-![Demo App Dark Mode](./assets/demo-app.png)
+- Demo application with test databases (MySQL, MongoDB, Postgres) and PMM.
+
+   ```bash
+   docker compose -f docker-compose-full.yaml up -d
+   ```
+
+   > **Note:** We recommend looking at the docker-compose.yaml files so you can know which containers are running and with what settings. You can always change the settings.
+
+   > **Note:** PMM server will be available at `localhost:8080`, access `admin` / `admin` . At the first startup, it will offer to change the password, skip it or set the same password (admin). 
+
+3. Launch the Control Panel at `localhost:3000` in your browser.
 
 4. Open the Settings tab and create connections to the databases you want to load.
 
-   - If you don't databases, start them using docker compose:
+   ![Demo App Dark Mode](./assets/demo-app.png)
 
-   ```bash
-   docker compose -f docker-compose-dbs.yaml up -d
-   ```
-
-   > **Note:** This `docker-compose.yml` file sets up a multi-container environment with PostgreSQL, MongoDB, and MySQL databases, along with a Percona Monitoring and Management (PMM) server and its client containers for monitoring each database.
-
-   ![Docker Compose DBs](./assets/docker-compose-dbs.png)
-
-   Connection options are available in docker-compose-dbs.yaml
+   If you run the databases using `docker-compose-dbs.yaml`, you can use the following parameters to connect them
 
    - **MySQL**: `root:password@tcp(mysql:3306)/dataset`
 
@@ -78,60 +82,63 @@ docker compose up -d
 
    - **MongoDB**: `mongodb://databaseAdmin:password@mongodb:27017/`
 
-   PMM server will be available at `localhost:8080`, access admin / admin . At the first startup, it will offer to change the password, skip it or set the same password (admin). 
+   If you connect to your databases, you probably know the settings to connect, if not, write to us.
 
 5. In the **Settings** tab, load the test dataset for each database by clicking `Create Schema` and `Import Dataset` buttons. A small dataset from a CSV file (26 repos and 4600 PRs) will be imported by default.
 
-   > **Note:** To import a large complete dataset, add the [GitHub API token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic) to the `GITHUB_TOKEN` environment variable and set `DATASET_LOAD_TYPE=githbub` in the `docker-compose.yaml` file for the `demo_app_dataset` service. Run `docker-compose up -d` when changing environment variables.
-   > ![Settings MySQL Example](./assets/settings-mysql-example.png)
+   ![Settings MySQL Example](./assets/settings-mysql-example.png)
 
-6. Turn on the `Enable Load` setting option and open the `Load Generator Control Panel` tab. Click Update connection to save the changes to the settings.
+   > **Note:** To import a large complete dataset, add the [GitHub API token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic) to the `GITHUB_TOKEN` environment variable and set `DATASET_LOAD_TYPE=githbub` in the `docker-compose.yaml` file for the `demo_app_dataset` service. Run `docker-compose up -d` when changing environment variables.
+
+6. Turn on the `Enable Load` setting option and click Update connection to make the database appear on the `Load Generator Control Panel` tab. 
 
 7. Open PMM to see the connected databases and load. `localhost:8080` (admin/admin). We recommend opening the Databases Overview dashboard in the Experimental section.
+
+   ![PMM Databases Overview](./assets/pmm-overview.jpg)
+
+   ![PMM Postgres](./assets/pmm.jpg)
+
+8. You can play with the load by including different types of SQL and NoSQL queries with switches, as well as changing the number of concurrent connections with a slider. 
+
+   > **Note:** You can see the queries running in the QAN section of PMM, and you can also see the source code in the internal/load files for each database type.
 
 ## Development Environment
 
 0. Run the environment:
 
-```bash
-docker compose -f docker-compose-dev.yaml up -d
-```
+   ```bash
+   docker compose -f docker-compose-dev.yaml up -d
+   ```
 
 1. Run the Control Panel script:
 
-```go
-go run cmd/web/main.go
-```
+   ```go
+   go run cmd/web/main.go
+   ```
 
-Launch the control panel at localhost:3000.
+   Launch the control panel at localhost:3000.
 
 2. Run the Dataset loader script
 
-```go
-go run cmd/dataset/main.go
-```
+   ```go
+   go run cmd/dataset/main.go
+   ```
 
 3. Run the Dataset Loader script:
 
-```go
-go run cmd/load/main.go
-```
+   ```go
+   go run cmd/load/main.go
+   ```
 
-7. Optionally, uncomment the configuration for PMM and PMM Client in docker-compose.yaml and run PMM:
-
-```bash
-docker compose up -d
-```
-
-Start PMM in your browser at localhost.
+   Start PMM in your browser at `localhost:8080` (admin/admin).
 
 ## Launching in Kubernetes
 
 1. Create a Kubernetes cluster (e.g., Minikube or GKE). For GKE:
 
-```bash
-gcloud container clusters create demo-app --project percona-product --zone us-central1-a --cluster-version 1.30 --machine-type n1-standard-16 --num-nodes=1
-```
+   ```bash
+   gcloud container clusters create demo-app --project percona-product --zone us-central1-a --cluster-version 1.30 --machine-type n1-standard-16 --num-nodes=1
+   ```
 
 2. Install **Percona Everest** or **Percona Operators** in the Kubernetes cluster to create databases.
    Percona Everest documentation:
@@ -143,28 +150,29 @@ gcloud container clusters create demo-app --project percona-product --zone us-ce
 
 3. Install PMM using Helm:
 
-```bash
-helm repo add percona https://percona.github.io/percona-helm-charts/
+   ```bash
+   helm repo add percona https://percona.github.io/percona-helm-charts/
 
-helm install pmm -n demo \
---set service.type="LoadBalancer" \
---set pmmResources.limits.memory="4Gi" \
---set pmmResources.limits.cpu="2" \
-percona/pmm
-```
+   helm install pmm -n demo \
+   --set service.type="LoadBalancer" \
+   --set pmmResources.limits.memory="4Gi" \
+   --set pmmResources.limits.cpu="2" \
+   percona/pmm
+   ```
 
 4. Get the PMM administrator password:
 
-```bash
-kubectl get secret pmm-secret -n demo -o jsonpath='{.data.PMM_ADMIN_PASSWORD}' | base64 --decode
-```
+   ```bash
+   kubectl get secret pmm-secret -n demo -o jsonpath='{.data.PMM_ADMIN_PASSWORD}' | base64 --decode
+   ```
 
 5. Get a public IP for PMM:
 
-```bash
-kubectl get svc -n demo monitoring-service -o jsonpath="{.status.loadBalancer.ingress[0].ip}"
+   ```bash
+   kubectl get svc -n demo monitoring-service -o jsonpath="{.status.loadBalancer.ingress[0].ip}"
+   ```
 
-```
+6. Run the Demo application using HELM or manually, instructions below.
 
 ### Running the Demo Application Using Helm
 
@@ -172,32 +180,32 @@ kubectl get svc -n demo monitoring-service -o jsonpath="{.status.loadBalancer.in
 
 2. Launch the application:
 
-```bash
-helm install demo-app ./k8s/helm -n demo
-```
+   ```bash
+   helm install demo-app ./k8s/helm -n demo
+   ```
 
 3. Get the public IP of the demo app and launch the control panel in your browser.
    Run this command to get the Public IP
 
-```bash
-kubectl -n demo get svc
-```
+   ```bash
+   kubectl -n demo get svc
+   ```
 
 4. Open the Settings tab on the control panel and set the parameters for connecting to the databases you created in Percona Everest or with Percona Operators.
 
 5. You may need to restart the dataset pod to speed up the process of loading the dataset into the databases.
 
-```bash
-kubectl -n demo delete pod [DATASET_POD]
-```
+   ```bash
+   kubectl -n demo delete pod [DATASET_POD]
+   ```
 
 6. You can change the allocated resources or the number of replicas by editing the `values.yaml` file and issuing the command
 
-```bash
-helm upgrade demo-app ./k8s/helm -n demo
-```
+   ```bash
+   helm upgrade demo-app ./k8s/helm -n demo
+   ```
 
-Demo App HELM parameters (./k8s/helm/values.yaml):
+   Demo App HELM parameters (./k8s/helm/values.yaml):
 
 - `githubToken` - is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
 
@@ -211,23 +219,23 @@ Demo App HELM parameters (./k8s/helm/values.yaml):
 
 1. Create the necessary Secrets and ConfigMap:
 
-```bash
-kubectl apply -f k8s/manual/config.yaml -n demo
-```
+   ```bash
+   kubectl apply -f k8s/manual/config.yaml -n demo
+   ```
 
-Check the k8s/config.yaml file. Be sure to set `GITHUB_TOKEN`, which is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
+   Check the k8s/config.yaml file. Be sure to set `GITHUB_TOKEN`, which is required to properly load the dataset from the GitHub API. You can create a personal Token at [https://github.com/settings/tokens](https://github.com/settings/tokens).
 
 2. Run Valkey database:
 
-```bash
-kubectl apply -f k8s/manual/valkey.yaml -n demo
-```
+   ```bash
+   kubectl apply -f k8s/manual/valkey.yaml -n demo
+   ```
 
 3. Deploy the Control Panel:
 
-```bash
-kubectl apply -f k8s/manual/web-deployment.yaml -n demo
-```
+   ```bash
+   kubectl apply -f k8s/manual/web-deployment.yaml -n demo
+   ```
 
 4. Run `kubectl -n demo get svc` to get the public IP. Launch the control panel in your browser.
 
@@ -237,15 +245,15 @@ The first time you connect to MySQL and Postgres, you will need to create a sche
 
 6. Deploy the Dataset Loader:
 
-```bash
-kubectl apply -f k8s/manual/dataset-deployment.yaml -n demo
-```
+   ```bash
+   kubectl apply -f k8s/manual/dataset-deployment.yaml -n demo
+   ```
 
 5. Deploy the Load Generator:
 
-```bash
-kubectl apply -f k8s/manual/load-deployment.yaml -n demo
-```
+   ```bash
+   kubectl apply -f k8s/manual/load-deployment.yaml -n demo
+   ```
 
 8. For separate database load generators, apply these commands:
 
@@ -267,7 +275,7 @@ kubectl apply -f k8s/manual/load-deployment.yaml -n demo
    kubectl apply -f k8s/manual/load-mongodb-deployment.yaml -n demo
    ```
 
-You can set the environment variable to determine which database the script will load.
+   You can set the environment variable to determine which database the script will load.
 
 6. Control the load in the control panel. Change queries using the switches. Track the result on PMM dashboards. Scale or change database parameters with Percona Everest.
 

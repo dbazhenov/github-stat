@@ -15,6 +15,46 @@ services:
       timeout: 3s
       retries: 5
 
+  demo_app_dataset:
+    image: dbazhenov/demo_app_dataset:0.1.8
+    depends_on:
+      valkey:
+        condition: service_healthy
+    environment:
+      - VALKEY_ADDR=valkey 
+      - VALKEY_PORT=6379
+      - DATASET_LOAD_TYPE=csv # github or csv
+      - DATASET_DEMO_CSV_PULLS=data/csv/pulls.csv # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/pulls.csv.zip
+      - DATASET_DEMO_CSV_REPOS=data/csv/repositories.csv # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/repositories.csv.zip
+      - GITHUB_ORG=percona # required for github load type
+      - GITHUB_TOKEN= # required for github load type
+      - DELAY_MINUTES=10
+      - DEBUG=false
+
+  demo_app_web:
+    image: dbazhenov/demo_app_web:0.1.8
+    depends_on:
+      valkey:
+        condition: service_healthy
+    environment:
+      - VALKEY_ADDR=valkey 
+      - VALKEY_PORT=6379
+      - CONTROL_PANEL_PORT=3000
+    ports:
+      - "3000:3000"
+
+  demo_app_load:
+    image: dbazhenov/demo_app_load:0.1.8
+    depends_on:
+      valkey:
+        condition: service_healthy
+    environment:
+      - VALKEY_ADDR=valkey
+      - VALKEY_PORT=6379
+      - LOAD_MYSQL=true
+      - LOAD_POSTGRES=true
+      - LOAD_MONGODB=true
+      
   postgres:
     image: "percona/percona-distribution-postgresql:16.2-multi"
     environment:
