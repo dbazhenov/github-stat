@@ -23,8 +23,8 @@ services:
       - VALKEY_ADDR=valkey 
       - VALKEY_PORT=6379
       - DATASET_LOAD_TYPE=csv # github or csv
-      - DATASET_DEMO_CSV_PULLS="data/csv/pulls.csv" # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/pulls.csv.zip
-      - DATASET_DEMO_CSV_REPOS="data/csv/repositories.csv" # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/repositories.csv.zip
+      - DATASET_DEMO_CSV_PULLS=data/csv/pulls.csv # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/pulls.csv.zip
+      - DATASET_DEMO_CSV_REPOS=data/csv/repositories.csv # https://github.com/dbazhenov/github-stat/raw/refs/heads/main/data/csv/repositories.csv.zip
       - GITHUB_ORG=percona # required for github load type
       - GITHUB_TOKEN= # required for github load type
       - DELAY_MINUTES=10
