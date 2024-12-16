@@ -74,7 +74,7 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 
    ![Demo App Dark Mode](./assets/demo-app.png)
 
-   If you run the databases using `docker-compose-dbs.yaml`, you can use the following parameters to connect them
+   If you run the databases using `docker-compose-full.yaml`, you can use the following parameters to connect them
 
    - **MySQL**: `root:password@tcp(mysql:3306)/dataset`
 
@@ -96,7 +96,7 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 
    ![PMM Databases Overview](./assets/pmm-overview.jpg)
 
-   ![PMM Postgres](./assets/pmm.jpg)
+   ![PMM Postgres](./assets/pmm-pg.jpg)
 
 8. You can play with the load by including different types of SQL and NoSQL queries with switches, as well as changing the number of concurrent connections with a slider. 
 
