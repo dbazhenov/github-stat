@@ -80,6 +80,8 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 
    - **Postgres**: `user=postgres password='password' dbname=dataset host=postgres port=5432 sslmode=disable`
 
+   - **YugabyteDB**: `user=yugabyte password='password' dbname=dataset host=yugabytedb port=5433 sslmode=disable` (YugabyteDB UI is on port 15433)
+
    - **MongoDB**: `mongodb://databaseAdmin:password@mongodb:27017/`
 
    If you connect to your databases, you probably know the settings to connect, if not, write to us.
