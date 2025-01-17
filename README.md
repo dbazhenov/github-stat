@@ -183,7 +183,7 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 2. Launch the application:
 
    ```bash
-   helm install demo-app ./k8s/helm -n demo
+   helm install demo-app ./k8s/helm -n demo --create-namespace
    ```
 
 3. Get the public IP of the demo app and launch the control panel in your browser.
