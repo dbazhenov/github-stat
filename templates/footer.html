@@ -1,13 +1,25 @@
 {{ define "footer" }}
-<footer class="text-center text-lg-start">
-  <div class="text-center p-3">
-      © 2024 Percona:
-      <a href="https://Percona.com/">Percona.com</a>
-  </div>
-</footer>
+
 <!-- Bootstrap JS -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.2/dist/umd/popper.min.js" integrity="sha384-7+zCNj/IqJ95wo16oMtfsKbZ9ccEh31eOz1HGyDuCQ6wgnyJNSYdrPa03rtR1zdB" crossorigin="anonymous"></script>
+
+<footer class="text-center text-lg-start">
+  <div class="text-center p-3">
+    © <span class="year"></span> Percona:
+    <a href="https://percona.com/">percona.com</a>
+  </div>
+</footer>
+
+<script>
+  $(document).ready(function() {
+    // Get the current year.
+    var year = new Date().getFullYear();
+
+    // Set the year in the footer.
+    $('.year').text(year);
+  });
+</script>
 
 <script>
     function deleteSchema(id) {
