@@ -1,5 +1,5 @@
+version: '3.8'
 services:
-
   valkey:
     image: valkey/valkey:8
     environment:
@@ -7,7 +7,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - valkey_data:/data
+      - valkey-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -15,7 +15,7 @@ services:
       retries: 5
 
   demo_app_dataset:
-    image: dbazhenov/demo_app_dataset:0.1.8
+    image: dbazhenov/demo_app_dataset:0.1.9
     depends_on:
       valkey:
         condition: service_healthy
@@ -31,7 +31,7 @@ services:
       - DEBUG=false
 
   demo_app_web:
-    image: dbazhenov/demo_app_web:0.1.8
+    image: dbazhenov/demo_app_web:0.1.9
     depends_on:
       valkey:
         condition: service_healthy
@@ -43,7 +43,7 @@ services:
       - "3000:3000"
 
   demo_app_load:
-    image: dbazhenov/demo_app_load:0.1.8
+    image: dbazhenov/demo_app_load:0.1.9
     depends_on:
       valkey:
         condition: service_healthy
@@ -53,17 +53,17 @@ services:
       - LOAD_MYSQL=true
       - LOAD_POSTGRES=true
       - LOAD_MONGODB=true
-      
+
+
   postgres:
-    image: "percona/percona-distribution-postgresql:16.2-multi"
+    image: "percona/percona-distribution-postgresql:17-multi"
     environment:
       POSTGRES_PASSWORD: password
       POSTGRES_USER: postgres
       LANG: en_US.utf8
       PGDATA: /data/db
     volumes:
-      - pgdata:/data/db
-      - ./data/init/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pg-data:/data/db
     ports: 
       - "5432:5432"
     healthcheck:
@@ -72,32 +72,13 @@ services:
       timeout: 10s
       retries: 5
 
-  yugabytedb:
-    image: "yugabytedb/yugabyte:2024.2.0.0-b145"
-    command: yugabyted start --enable_pg_parity_early_access --tserver_flags="ysql_pg_conf_csv={shared_preload_libraries='pg_stat_monitor'}" --initial_scripts_dir=/docker-entrypoint-initial_scripts_dir --background=false 
-    environment:
-      YSQL_PASSWORD: password
-      YSQL_USER: yugabyte
-    volumes:
-       - ./data/init/postgresql:/docker-entrypoint-initial_scripts_dir
-    ports: 
-      - "5433:5433"
-      - "15433:15433"
-    healthcheck:
-      test: ["CMD-SHELL", "PGPASSWORD=$$YSQL_PASSWORD yugabyted connect ysql <<<''"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   mongodb:
-    image: "percona/percona-server-mongodb:7.0-multi"
+    image: "percona/percona-server-mongodb:8.0-multi"
     volumes:
-      - mongodata:/data/db
-      - ./data/init/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+      - mongo-data:/data/db
     environment:
       MONGO_INITDB_ROOT_USERNAME: databaseAdmin
       MONGO_INITDB_ROOT_PASSWORD: password
-      MONGO_INITDB_DATABASE: dataset
     ports:
       - "27017:27017"
     healthcheck:
@@ -107,13 +88,11 @@ services:
       retries: 5
 
   mysql:
-    image: "percona/percona-server:8.3.0-1.1-multi"
+    image: "percona/percona-server:8.4.3-3.1-multi"
     volumes:
-      - mysqldata:/var/lib/mysql
-      - ./data/init/mysql:/docker-entrypoint-initdb.d
+      - mysql-data:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: dataset
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot-password"]
       interval: 5s
@@ -171,8 +150,8 @@ services:
         pmm-admin add mongodb --username=databaseAdmin --password=password --host=mongodb --port=27017 --query-source=profiler
 
 volumes:
+  valkey-data:
   pmm-data:
-  mongodata:
-  pgdata:
-  mysqldata:
-  valkey_data:
+  mongo-data:
+  pg-data:
+  mysql-data:

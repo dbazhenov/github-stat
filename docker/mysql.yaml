@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+
+  mysql:
+    image: "percona/percona-server:8.4.3-3.1-multi"
+    volumes:
+      - mysqldata:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot-password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "3306:3306"
+    command: >
+      --performance-schema --innodb_monitor_enable=all
+      --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
+
+volumes:
+  mysql-data:

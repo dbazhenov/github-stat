@@ -346,7 +346,7 @@ func runMySQL(ctx context.Context, routineId int, dbConfig map[string]string) {
 			return
 		default:
 			// Update localDBConfig every 2 seconds
-			if time.Since(lastUpdate) > 2*time.Second {
+			if time.Since(lastUpdate) > 1*time.Second {
 				localDBConfig = getDatabaseByID(localDBConfig["id"], "mysql")
 				if localDBConfig == nil {
 					log.Printf("MySQL: %s: goroutine: %d: database has been removed, stopping goroutine", dbConfig["id"], routineId)
@@ -415,7 +415,7 @@ func runPostgreSQL(ctx context.Context, routineId int, dbConfig map[string]strin
 			return
 		default:
 
-			if time.Since(lastUpdate) > 2*time.Second {
+			if time.Since(lastUpdate) > 1*time.Second {
 				localDBConfig = getDatabaseByID(dbConfig["id"], "postgres")
 
 				if localDBConfig == nil {
@@ -487,7 +487,7 @@ func runMongoDB(ctx context.Context, routineId int, dbConfig map[string]string) 
 			return
 		default:
 
-			if time.Since(lastUpdate) > 2*time.Second {
+			if time.Since(lastUpdate) > 1*time.Second {
 				localDBConfig = getDatabaseByID(dbConfig["id"], "mongodb")
 
 				if localDBConfig == nil {
