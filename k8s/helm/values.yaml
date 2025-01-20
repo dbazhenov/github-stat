@@ -28,15 +28,15 @@ images:
   web:
     repository: dbazhenov/demo_app_web
     pullPolicy: Always
-    tag: "0.1.8"
+    tag: "0.1.9"
   dataset:
     repository: dbazhenov/demo_app_dataset
     pullPolicy: Always
-    tag: "0.1.8"
+    tag: "0.1.9"
   load:
     repository: dbazhenov/demo_app_load
     pullPolicy: Always
-    tag: "0.1.8"
+    tag: "0.1.9"
   valkey:
     repository: valkey/valkey
     pullPolicy: Always

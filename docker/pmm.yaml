@@ -1,0 +1,50 @@
+version: '3.8'
+services:
+
+  pmm-server:
+    image: percona/pmm-server:2
+    platform: "linux/amd64"
+    container_name: pmm-server
+    restart: always
+    ports:
+      - 8080:80
+      - 443:443
+    volumes:
+      - pmm-data:/srv
+    environment:
+      - DISABLE_TELEMETRY=0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  pmm-client:
+    image: percona/pmm-client:2
+    platform: "linux/amd64"
+    container_name: pmm-client
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server
+      PMM_AGENT_SERVER_USERNAME: admin
+      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: >
+        pmm-admin status --wait=10s &&
+        pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306 &&
+        pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor &&
+        pmm-admin add mongodb --username=databaseAdmin --password=password --host=mongodb --port=27017 --query-source=profiler
+
+volumes:
+  pmm-data:

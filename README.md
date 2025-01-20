@@ -46,10 +46,6 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 
    Open the folder with the repository `cd github-stat/`
 
-<!-- 2. Copy or rename `.env.example` (already provided in this repo) to `.env`. Set the parameters in the `.env` file.
-
-   > **Note:** The `.env` file contains essential configuration settings for the application. Adjust these settings based on your environment to ensure proper functionality. -->
-
 2. Run the environment. Two options:
 
 - Demo application only. Suitable for connecting to your own databases e.g. created with Percona Everest, Pecona Operators or other databases in the cloud or locally.
@@ -58,13 +54,13 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
    docker compose up -d
    ```
 
-- Demo application with test databases (MySQL, MongoDB, Postgres) and PMM.
+- Demo application with test databases (MySQL 8.4, MongoDB 8, Postgres 17) and Percona Monitoring and Management (PMM).
 
    ```bash
-   docker compose -f docker-compose-full.yaml up -d
+   docker-compose -p demo-app -f docker/full.yaml up -d
    ```
 
-   > **Note:** We recommend looking at the docker-compose.yaml files so you can know which containers are running and with what settings. You can always change the settings.
+   > **Note:** We recommend looking at the docker-compose files so you can know which containers are running and with what settings. You can always change the settings.
 
    > **Note:** PMM server will be available at `localhost:8080`, access `admin` / `admin` . At the first startup, it will offer to change the password, skip it or set the same password (admin). 
 
@@ -79,8 +75,6 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
    - **MySQL**: `root:password@tcp(mysql:3306)/dataset`
 
    - **Postgres**: `user=postgres password='password' dbname=dataset host=postgres port=5432 sslmode=disable`
-
-   - **YugabyteDB**: `user=yugabyte password='password' dbname=dataset host=yugabytedb port=5433 sslmode=disable` (YugabyteDB UI is on port 15433)
 
    - **MongoDB**: `mongodb://databaseAdmin:password@mongodb:27017/`
 
@@ -104,35 +98,55 @@ The application connects to and generates load on MySQL, PostgreSQL, and MongoDB
 
    > **Note:** You can see the queries running in the QAN section of PMM, and you can also see the source code in the internal/load files for each database type.
 
-## Development Environment
+### Additional databases 
 
-0. Run the environment:
+The application can work with other compatible databases such as YugabyteDB, FerretDB or MariaDB
 
-   ```bash
-   docker compose -f docker-compose-dev.yaml up -d
-   ```
+To start the databases use docker-compose files from the docker folder or instructions from official sites.
 
-1. Run the Control Panel script:
+Start the application if it is not already running
+```bash
+docker-compose -p demo-app -f docker/app.yaml up -d
+```
 
-   ```go
-   go run cmd/web/main.go
-   ```
+**YugabyteDB**
 
-   Launch the control panel at localhost:3000.
+Run docker compose with the YugabyteDB database
 
-2. Run the Dataset loader script
+```bash
+docker-compose -p demo-app -f docker/yugabytedb.yaml up -d
+```
 
-   ```go
-   go run cmd/dataset/main.go
-   ```
+Open the Settings tab in the Control Panel and create a connection
 
-3. Run the Dataset Loader script:
+```user=yugabyte password='password' dbname=dataset host=yugabytedb port=5433 sslmode=disable``` 
 
-   ```go
-   go run cmd/load/main.go
-   ```
+YugabyteDB UI is on port 15433
 
-   Start PMM in your browser at `localhost:8080` (admin/admin).
+**FerretDB**
+
+Run docker compose with the FerretDB database
+
+```bash
+docker-compose -p demo-app -f docker/ferretdb.yaml up -d
+```
+
+Open the Settings tab in the Control Panel and create a connection
+```
+mongodb://username:password@ferretdb/ferretdb?authMechanism=PLAIN
+```
+
+**MariaDB**
+
+Run docker compose with the MariaDB database
+
+```bash
+docker-compose -p demo-app -f docker/mariadb.yaml up -d
+```
+
+Open the Settings tab in the Control Panel and create a connection
+
+```root:password@tcp(mariadb:3306)/dataset```
 
 ## Launching in Kubernetes
 
@@ -282,6 +296,74 @@ The first time you connect to MySQL and Postgres, you will need to create a sche
 6. Control the load in the control panel. Change queries using the switches. Track the result on PMM dashboards. Scale or change database parameters with Percona Everest.
 
 Have fun experimenting.
+
+## Development Environment
+
+0. Run the environment:
+
+   ```bash
+   docker compose -p demo-app -f docker/dev.yaml up -d
+   ```
+
+   This will start the Valkey required for the application services and the three databases (MySQL 8.4, MongoDB 8, Postgres 17). Edit docker/dev.yaml if you need other databases or versions.
+
+1. Run the Control Panel script:
+
+   ```go
+   go run cmd/web/main.go
+   ```
+
+   Launch the control panel at localhost:3000. Open the Settings tab and add connections. The control panel is a web application, the settings are saved in Valkey. 
+
+2. Run the Dataset loader script
+
+   ```go
+   go run cmd/dataset/main.go
+   ```
+
+   This will start the load service. The service reads the configuration from Valkey according to the control panel and generates the load in separate Go routines.
+
+3. Run the Dataset Loader script:
+
+   ```go
+   go run cmd/load/main.go
+   ```
+
+   Start PMM in your browser at `localhost:8080` (admin/admin).
+
+## Release process of the new version
+
+1. Test the application in a dev environment. Check the logs in the console.
+
+2. Change the image versions for demo_app_dataset, demo_app_load, demo_app_web to the new version number in the files:
+
+   *  `docker-compose.yaml`
+
+   *  `docker/app.yaml`
+
+   *  `docker/full.yaml`
+
+   *  `k8s/helm/Chart.yaml`
+
+   *  `k8s/helm/values.yaml` - images section
+
+   *  `k8s/manual/*` - dataset-deployment.yaml, web-deployment.yaml, load-deployment.yaml files
+
+3. Building and publishing to docker hub is done by GitHub Workflow by tag automatically. Set a new tag with the command:
+
+   ```
+   git tag -a 0.1.9 -m "Release 0.1.9"
+   ``` 
+
+   Publish a new tag
+
+   ``` 
+   git push origin 0.1.9
+   ``` 
+
+4. Check that the GitHub Action is successful and new versions are published on dockerhub. 
+
+5. Test the application in docker and k8s
 
 ### Useful Commands
 

@@ -46,10 +46,10 @@
       {{ if ne .dbType "mongodb" }}
         {{ if eq .schemaStatus "false" }}
           <button type="button" class="btn btn-secondary" onclick="createSchema('{{ .id }}')" id="createSchema-{{ .id }}">Create Schema</button>
-          <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}" style="display: none;">Delete Schema</button>
+          <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}" style="display: none;">Delete database</button>
         {{ else }}
           <button type="button" class="btn btn-secondary" onclick="createSchema('{{ .id }}')" id="createSchema-{{ .id }}" style="display: none;">Create Schema</button>
-          <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}">Delete Schema</button>
+          <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}">Delete database</button>
         {{ end }}
       {{ else }}
         <button type="button" class="btn btn-secondary" onclick="deleteSchema('{{ .id }}')" id="deleteSchema-{{ .id }}">Delete database</button>

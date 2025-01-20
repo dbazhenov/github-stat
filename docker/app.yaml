@@ -1,4 +1,4 @@
-version: '3.7'
+version: '3.8'
 services:
   valkey:
     image: valkey/valkey:8
@@ -7,7 +7,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - valkey_data:/data
+      - valkey-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -55,4 +55,4 @@ services:
       - LOAD_MONGODB=true
 
 volumes:
-  valkey_data:
+  valkey-data:
